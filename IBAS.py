@@ -5,11 +5,11 @@ from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 import os
 import base64
+from dotenv import load_dotenv
 
 app = Flask(__name__)
 
 # Load environment variables
-from dotenv import load_dotenv
 load_dotenv('IBAS.env')
 
 # Connect to MongoDB
@@ -43,6 +43,9 @@ def serialize_key(key, private=False):
 @app.route('/generate_keys', methods=['POST'])
 def generate_keys():
     source = request.json.get('source')
+    if keys_collection.find_one({'source': source}):
+        return jsonify({'error': 'Keys for this source already exist'}), 400
+    
     private_key, public_key = generate_key_pair()
     
     keys_collection.insert_one({
@@ -55,10 +58,13 @@ def generate_keys():
 
 @app.route('/fetch_weather_data', methods=['POST'])
 def fetch_weather_data():
-    # This is a placeholder for actual data fetching logic from weather providers
     source = request.json.get('source')
     weather_data = request.json.get('data')
-    private_key_data = keys_collection.find_one({'source': source})['private_key']
+    key_record = keys_collection.find_one({'source': source})
+    if not key_record:
+        return jsonify({'error': 'No keys found for this source'}), 404
+
+    private_key_data = key_record['private_key']
     private_key = serialization.load_pem_private_key(base64.b64decode(private_key_data.encode('utf-8')), password=None)
     
     # Sign the data
@@ -76,7 +82,7 @@ def fetch_weather_data():
         'source': source,
         'data': weather_data,
         'signature': base64.b64encode(signature).decode('utf-8'),
-        'public_key': keys_collection.find_one({'source': source})['public_key']
+        'public_key': key_record['public_key']
     })
     
     return jsonify({'message': 'Weather data fetched, signed, and stored successfully'}), 201
