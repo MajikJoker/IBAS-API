@@ -9,8 +9,16 @@ import base64
 
 # Load environment variables
 load_dotenv()
+
+# Debugging prints to verify environment variables
+print("SECRET_KEY:", os.getenv('SECRET_KEY'))
+print("MONGO_URI:", os.getenv('MONGO_URI'))
+
 SECRET_KEY = os.getenv('SECRET_KEY')
 MONGO_URI = os.getenv('MONGO_URI')
+
+if not MONGO_URI:
+    raise ValueError("No MONGO_URI found in environment variables")
 
 app = Flask(__name__)
 app.config["MONGO_URI"] = MONGO_URI
