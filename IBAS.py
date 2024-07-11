@@ -1,115 +1,108 @@
-from flask import Flask, request, jsonify
-from pymongo import MongoClient
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import padding
 import os
-import base64
+from flask import Flask, request, jsonify
+from flask_pymongo import PyMongo
 from dotenv import load_dotenv
-
-app = Flask(__name__)
+from Crypto.PublicKey import RSA
+from Crypto.Signature import pkcs1_15
+from Crypto.Hash import SHA256
+import base64
 
 # Load environment variables
-load_dotenv('IBAS.env')
+load_dotenv()
+SECRET_KEY = os.getenv('SECRET_KEY')
+MONGO_URI = os.getenv('MONGO_URI')
 
-# Connect to MongoDB
-client = MongoClient(os.getenv('MONGO_URI'))
-db = client[os.getenv('MONGO_DB_NAME')]
-keys_collection = db['keys']
-data_collection = db['data']
-
-# Key management functions
-def generate_key_pair():
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048
-    )
-    public_key = private_key.public_key()
-    return private_key, public_key
-
-def serialize_key(key, private=False):
-    if private:
-        return key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        )
-    else:
-        return key.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        )
+app = Flask(__name__)
+app.config["MONGO_URI"] = MONGO_URI
+mongo = PyMongo(app)
 
 @app.route('/generate_keys', methods=['POST'])
 def generate_keys():
+    key = RSA.generate(2048)
+    private_key = key.export_key().decode('utf-8')
+    public_key = key.publickey().export_key().decode('utf-8')
+
     source = request.json.get('source')
-    if keys_collection.find_one({'source': source}):
-        return jsonify({'error': 'Keys for this source already exist'}), 400
-    
-    private_key, public_key = generate_key_pair()
-    
-    keys_collection.insert_one({
-        'source': source,
-        'private_key': base64.b64encode(serialize_key(private_key, private=True)).decode('utf-8'),
-        'public_key': base64.b64encode(serialize_key(public_key)).decode('utf-8')
-    })
-    
-    return jsonify({'message': 'Keys generated and stored successfully'}), 201
 
-@app.route('/fetch_weather_data', methods=['POST'])
-def fetch_weather_data():
+    # Store the keys in the MongoDB
+    mongo.db.keys.insert_one({
+        'source': source,
+        'private_key': private_key,
+        'public_key': public_key
+    })
+
+    return jsonify({'public_key': public_key, 'private_key': private_key}), 201
+
+@app.route('/fetch_weather', methods=['POST'])
+def fetch_weather():
+    # Mock weather data fetch
+    weather_data = {
+        'temperature': 25,
+        'humidity': 70
+    }
     source = request.json.get('source')
-    weather_data = request.json.get('data')
-    key_record = keys_collection.find_one({'source': source})
-    if not key_record:
-        return jsonify({'error': 'No keys found for this source'}), 404
 
-    private_key_data = key_record['private_key']
-    private_key = serialization.load_pem_private_key(base64.b64decode(private_key_data.encode('utf-8')), password=None)
-    
-    # Sign the data
-    signature = private_key.sign(
-        weather_data.encode('utf-8'),
-        padding.PSS(
-            mgf=padding.MGF1(hashes.SHA256()),
-            salt_length=padding.PSS.MAX_LENGTH
-        ),
-        hashes.SHA256()
-    )
-    
-    # Store data and signature
-    data_collection.insert_one({
+    key_doc = mongo.db.keys.find_one({'source': source})
+    private_key = RSA.import_key(key_doc['private_key'])
+    signer = pkcs1_15.new(private_key)
+    h = SHA256.new(str(weather_data).encode('utf-8'))
+    signature = base64.b64encode(signer.sign(h)).decode('utf-8')
+
+    return jsonify({'data': weather_data, 'signature': signature, 'public_key': key_doc['public_key']}), 200
+
+@app.route('/store_data', methods=['POST'])
+def store_data():
+    data = request.json.get('data')
+    signature = request.json.get('signature')
+    public_key = request.json.get('public_key')
+    source = request.json.get('source')
+
+    h = SHA256.new(str(data).encode('utf-8'))
+    hash_data = base64.b64encode(h.digest()).decode('utf-8')
+
+    h_sig = SHA256.new(signature.encode('utf-8'))
+    hash_sig = base64.b64encode(h_sig.digest()).decode('utf-8')
+
+    mongo.db.weather_data.insert_one({
         'source': source,
-        'data': weather_data,
-        'signature': base64.b64encode(signature).decode('utf-8'),
-        'public_key': key_record['public_key']
+        'data': data,
+        'signature': signature,
+        'public_key': public_key,
+        'hash_data': hash_data,
+        'hash_signature': hash_sig
     })
-    
-    return jsonify({'message': 'Weather data fetched, signed, and stored successfully'}), 201
 
-@app.route('/verify_data', methods=['GET'])
+    return jsonify({'message': 'Data stored successfully'}), 201
+
+@app.route('/verify_data', methods=['POST'])
 def verify_data():
-    source = request.args.get('source')
-    record = data_collection.find_one({'source': source})
-    if not record:
-        return jsonify({'error': 'Data not found'}), 404
-    
-    public_key_data = record['public_key']
-    public_key = serialization.load_pem_public_key(base64.b64decode(public_key_data.encode('utf-8')))
-    
+    source = request.json.get('source')
+    data_doc = mongo.db.weather_data.find_one({'source': source})
+
+    data = data_doc['data']
+    signature = base64.b64decode(data_doc['signature'])
+    public_key = RSA.import_key(data_doc['public_key'])
+
+    # Verify data integrity
+    h = SHA256.new(str(data).encode('utf-8'))
+    hash_data = base64.b64encode(h.digest()).decode('utf-8')
+
+    if hash_data != data_doc['hash_data']:
+        return jsonify({'message': 'Data integrity compromised'}), 400
+
+    # Verify signature integrity
+    h_sig = SHA256.new(data_doc['signature'].encode('utf-8'))
+    hash_sig = base64.b64encode(h_sig.digest()).decode('utf-8')
+
+    if hash_sig != data_doc['hash_signature']:
+        return jsonify({'message': 'Signature integrity compromised'}), 400
+
+    # Verify the signature
     try:
-        public_key.verify(
-            base64.b64decode(record['signature'].encode('utf-8')),
-            record['data'].encode('utf-8'),
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=padding.PSS.MAX_LENGTH
-            ),
-            hashes.SHA256()
-        )
-        return jsonify({'message': 'Data is valid'}), 200
-    except Exception as e:
-        return jsonify({'error': 'Data verification failed', 'details': str(e)}), 400
+        pkcs1_15.new(public_key).verify(h, signature)
+        return jsonify({'message': 'Data is authentic and intact', 'data': data}), 200
+    except (ValueError, TypeError):
+        return jsonify({'message': 'Data verification failed'}), 400
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+    app.run(debug=True)
