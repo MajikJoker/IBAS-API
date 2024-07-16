@@ -16,9 +16,9 @@ WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 MONGO_URI = os.environ.get("AZURE_COSMOS_CONNECTIONSTRING")
 FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
-# Set up MongoDB client and specify database and collections
+# MongoDB setup
 client = MongoClient(MONGO_URI)
-db = client.weather_data
+db = client['ibas-server']  # Ensure the database name matches the one in your connection string
 collection = db.weather_records
 keys_collection = db.transitKeys
 
