@@ -2,9 +2,6 @@ from flask import Flask, request, jsonify
 import requests
 from pymongo import MongoClient
 import os
-import hashlib
-from Crypto.Cipher import AES
-from base64 import b64encode, b64decode
 from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, check_hash
 
 app = Flask(__name__)
@@ -13,9 +10,10 @@ app = Flask(__name__)
 from dotenv import load_dotenv
 load_dotenv()
 
-WEATHER_API_URL = os.getenv("WEATHER_API_URL")
-MONGO_URI = os.getenv("MONGO_URI")
-FETCH_WEATHER = os.getenv("FETCH_WEATHER") == 'True'
+WEATHER_API_URL = os.environ.get("WEATHER_API_URL")
+WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
+MONGO_URI = os.environ.get("MONGO_URI")
+FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
 # MongoDB setup
 client = MongoClient(MONGO_URI)
@@ -28,7 +26,7 @@ def fetch_weather():
     if not FETCH_WEATHER:
         return jsonify({"error": "Weather data fetch is disabled."}), 403
     
-    response = requests.get(WEATHER_API_URL)
+    response = requests.get(WEATHER_API_URL, params={"q": "London", "appid": WEATHER_API_KEY})
     if response.status_code != 200:
         return jsonify({"error": "Failed to fetch weather data"}), 500
     
@@ -49,8 +47,35 @@ def fetch_weather():
 
     return jsonify({"message": "Weather data fetched and stored successfully"}), 200
 
-@app.route('/get-weather', methods=['GET'])
+@app.route('/weather', methods=['POST'])
 def get_weather():
+    data = request.json
+    latitude = data['latitude']
+    longitude = data['longitude']
+    
+    # Define the API endpoint URL with placeholders
+    params = {
+        "lat": latitude,
+        "lon": longitude,
+        "appid": WEATHER_API_KEY
+    }
+
+    # Send a GET request to the API endpoint
+    response = requests.get(WEATHER_API_URL, params=params)
+
+    # Check for successful response (status code 200)
+    if response.status_code == 200:
+        # Convert the JSON response to a Python dictionary
+        weather_data = response.json()
+        return jsonify(weather_data)
+    else:
+        return jsonify({
+            "error": f"API request failed with status code {response.status_code}",
+            "message": response.text
+        }), response.status_code
+
+@app.route('/get-weather', methods=['GET'])
+def get_stored_weather():
     record = collection.find_one()
     key_record = keys_collection.find_one()
     if not record or not key_record:
@@ -70,4 +95,4 @@ def get_weather():
     return jsonify(weather_data), 200
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0')
