@@ -53,19 +53,15 @@ def get_weather():
     latitude = data['latitude']
     longitude = data['longitude']
     
-    # Define the API endpoint URL with placeholders
     params = {
         "lat": latitude,
         "lon": longitude,
         "appid": WEATHER_API_KEY
     }
 
-    # Send a GET request to the API endpoint
     response = requests.get(WEATHER_API_URL, params=params)
 
-    # Check for successful response (status code 200)
     if response.status_code == 200:
-        # Convert the JSON response to a Python dictionary
         weather_data = response.json()
         return jsonify(weather_data)
     else:
@@ -85,14 +81,12 @@ def get_stored_weather():
     stored_hash = record["hash"]
     key = key_record["key"]
 
-    # Verify data integrity
     if not check_hash(encrypted_data, stored_hash):
         return jsonify({"error": "Data integrity compromised"}), 500
 
-    # Decrypt weather data
     weather_data = decrypt_data(encrypted_data, key)
 
     return jsonify(weather_data), 200
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(debug=True, host='0.0.0.0', port=8000)
