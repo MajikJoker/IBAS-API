@@ -12,7 +12,7 @@ load_dotenv()
 
 WEATHER_API_URL = os.environ.get("WEATHER_API_URL")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
-MONGO_URI = os.environ.get("MONGO_URI")
+MONGO_URI = os.environ.get("AZURE_COSMOS_CONNECTIONSTRING")  # Ensure this matches the variable name in Azure
 FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
 # MongoDB setup
