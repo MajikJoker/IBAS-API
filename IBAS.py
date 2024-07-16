@@ -1,116 +1,73 @@
-import os
 from flask import Flask, request, jsonify
-from flask_pymongo import PyMongo
-from dotenv import load_dotenv
-from Crypto.PublicKey import RSA
-from Crypto.Signature import pkcs1_15
-from Crypto.Hash import SHA256
-import base64
-
-# Load environment variables
-load_dotenv()
-
-# Debugging prints to verify environment variables
-print("SECRET_KEY:", os.getenv('SECRET_KEY'))
-print("MONGO_URI:", os.getenv('MONGO_URI'))
-
-SECRET_KEY = os.getenv('SECRET_KEY')
-MONGO_URI = os.getenv('MONGO_URI')
-
-if not MONGO_URI:
-    raise ValueError("No MONGO_URI found in environment variables")
+import requests
+from pymongo import MongoClient
+import os
+import hashlib
+from Crypto.Cipher import AES
+from base64 import b64encode, b64decode
+from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, check_hash
 
 app = Flask(__name__)
-app.config["MONGO_URI"] = MONGO_URI
-mongo = PyMongo(app)
 
-@app.route('/generate_keys', methods=['POST'])
-def generate_keys():
-    key = RSA.generate(2048)
-    private_key = key.export_key().decode('utf-8')
-    public_key = key.publickey().export_key().decode('utf-8')
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
 
-    source = request.json.get('source')
+WEATHER_API_URL = os.getenv("WEATHER_API_URL")
+MONGO_URI = os.getenv("MONGO_URI")
+FETCH_WEATHER = os.getenv("FETCH_WEATHER") == 'True'
 
-    # Store the keys in the MongoDB
-    mongo.db.keys.insert_one({
-        'source': source,
-        'private_key': private_key,
-        'public_key': public_key
-    })
+# MongoDB setup
+client = MongoClient(MONGO_URI)
+db = client.weather_data
+collection = db.weather_records
+keys_collection = db.transitKeys
 
-    return jsonify({'public_key': public_key, 'private_key': private_key}), 201
-
-@app.route('/fetch_weather', methods=['POST'])
+@app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
-    # Mock weather data fetch
-    weather_data = {
-        'temperature': 25,
-        'humidity': 70
+    if not FETCH_WEATHER:
+        return jsonify({"error": "Weather data fetch is disabled."}), 403
+    
+    response = requests.get(WEATHER_API_URL)
+    if response.status_code != 200:
+        return jsonify({"error": "Failed to fetch weather data"}), 500
+    
+    weather_data = response.json()
+
+    # Encrypt weather data
+    key = generate_key()
+    encrypted_data = encrypt_data(weather_data, key)
+
+    # Store encrypted data and hash in MongoDB
+    data_hash = get_hashed_data(encrypted_data)
+    record = {
+        "data": encrypted_data,
+        "hash": data_hash
     }
-    source = request.json.get('source')
+    collection.insert_one(record)
+    keys_collection.insert_one({"key": key})
 
-    key_doc = mongo.db.keys.find_one({'source': source})
-    private_key = RSA.import_key(key_doc['private_key'])
-    signer = pkcs1_15.new(private_key)
-    h = SHA256.new(str(weather_data).encode('utf-8'))
-    signature = base64.b64encode(signer.sign(h)).decode('utf-8')
+    return jsonify({"message": "Weather data fetched and stored successfully"}), 200
 
-    return jsonify({'data': weather_data, 'signature': signature, 'public_key': key_doc['public_key']}), 200
+@app.route('/get-weather', methods=['GET'])
+def get_weather():
+    record = collection.find_one()
+    key_record = keys_collection.find_one()
+    if not record or not key_record:
+        return jsonify({"error": "No weather data available"}), 404
 
-@app.route('/store_data', methods=['POST'])
-def store_data():
-    data = request.json.get('data')
-    signature = request.json.get('signature')
-    public_key = request.json.get('public_key')
-    source = request.json.get('source')
-
-    h = SHA256.new(str(data).encode('utf-8'))
-    hash_data = base64.b64encode(h.digest()).decode('utf-8')
-
-    h_sig = SHA256.new(signature.encode('utf-8'))
-    hash_sig = base64.b64encode(h_sig.digest()).decode('utf-8')
-
-    mongo.db.weather_data.insert_one({
-        'source': source,
-        'data': data,
-        'signature': signature,
-        'public_key': public_key,
-        'hash_data': hash_data,
-        'hash_signature': hash_sig
-    })
-
-    return jsonify({'message': 'Data stored successfully'}), 201
-
-@app.route('/verify_data', methods=['POST'])
-def verify_data():
-    source = request.json.get('source')
-    data_doc = mongo.db.weather_data.find_one({'source': source})
-
-    data = data_doc['data']
-    signature = base64.b64decode(data_doc['signature'])
-    public_key = RSA.import_key(data_doc['public_key'])
+    encrypted_data = record["data"]
+    stored_hash = record["hash"]
+    key = key_record["key"]
 
     # Verify data integrity
-    h = SHA256.new(str(data).encode('utf-8'))
-    hash_data = base64.b64encode(h.digest()).decode('utf-8')
+    if not check_hash(encrypted_data, stored_hash):
+        return jsonify({"error": "Data integrity compromised"}), 500
 
-    if hash_data != data_doc['hash_data']:
-        return jsonify({'message': 'Data integrity compromised'}), 400
+    # Decrypt weather data
+    weather_data = decrypt_data(encrypted_data, key)
 
-    # Verify signature integrity
-    h_sig = SHA256.new(data_doc['signature'].encode('utf-8'))
-    hash_sig = base64.b64encode(h_sig.digest()).decode('utf-8')
-
-    if hash_sig != data_doc['hash_signature']:
-        return jsonify({'message': 'Signature integrity compromised'}), 400
-
-    # Verify the signature
-    try:
-        pkcs1_15.new(public_key).verify(h, signature)
-        return jsonify({'message': 'Data is authentic and intact', 'data': data}), 200
-    except (ValueError, TypeError):
-        return jsonify({'message': 'Data verification failed'}), 400
+    return jsonify(weather_data), 200
 
 if __name__ == '__main__':
     app.run(debug=True)

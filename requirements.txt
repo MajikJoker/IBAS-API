@@ -3,3 +3,4 @@ werkzeug==2.0.2
 flask-pymongo==2.3.0
 pycryptodome==3.10.1
 python-dotenv==0.19.1
+requests==2.31.0
