@@ -31,12 +31,11 @@ def fetch_weather():
     """
     if not FETCH_WEATHER:
         return jsonify({"error": "Weather data fetch is disabled."}), 403
-
-    # Fetch weather data from external API
+    
     response = requests.get(WEATHER_API_URL, params={"q": "London", "appid": WEATHER_API_KEY})
     if response.status_code != 200:
         return jsonify({"error": "Failed to fetch weather data"}), 500
-
+    
     weather_data = response.json()
 
     # Encrypt the weather data
@@ -51,8 +50,12 @@ def fetch_weather():
         "data": encrypted_data,
         "hash": data_hash
     }
-    collection.insert_one(record)
-    keys_collection.insert_one({"key": key})
+    result_record = collection.insert_one(record)
+    result_key = keys_collection.insert_one({"key": key})
+
+    # Add debug prints
+    print(f"Inserted record ID: {result_record.inserted_id}")
+    print(f"Inserted key ID: {result_key.inserted_id}")
 
     return jsonify({"message": "Weather data fetched and stored successfully"}), 200
 
