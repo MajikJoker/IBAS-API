@@ -76,7 +76,7 @@ jobs:
           slot-name: "Production"
 
       - name: Set environment variables
-      run: |
-        echo "AZURE_COSMOS_CONNECTIONSTRING=${{ secrets.AZURE_COSMOS_CONNECTIONSTRING }}" >> $GITHUB_ENV
-        echo "WEATHER_API_KEY=${{ secrets.WEATHER_API_KEY }}" >> $GITHUB_ENV
-        echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> $GITHUB_ENV
+        run: |
+          echo "AZURE_COSMOS_CONNECTIONSTRING=${{ secrets.AZURE_COSMOS_CONNECTIONSTRING }}" >> $GITHUB_ENV
+          echo "WEATHER_API_KEY=${{ secrets.WEATHER_API_KEY }}" >> $GITHUB_ENV
+          echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> $GITHUB_ENV
