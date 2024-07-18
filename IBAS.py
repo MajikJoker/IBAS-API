@@ -18,7 +18,7 @@ FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
 # MongoDB setup
 client = MongoClient(MONGO_URI)
-db = client['ibas-server']  # Ensure the database name matches the one in your connection string
+db = client.get_database('ibas-server')  # Ensure the database name is fetched correctly
 collection = db.weather_records
 keys_collection = db.transitKeys
 
