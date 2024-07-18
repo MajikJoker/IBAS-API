@@ -22,42 +22,62 @@ db = client['ibas-server']  # Ensure the database name matches the one in your c
 collection = db.weather_records
 keys_collection = db.transitKeys
 
+# Function to test the MongoDB connection
+@app.before_first_request
+def test_db_connection():
+    try:
+        client.admin.command('ping')
+        print("MongoDB connection established successfully.")
+    except Exception as e:
+        print(f"Failed to connect to MongoDB: {e}")
+
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
-    """
-    Fetches weather data from the external API and stores it in MongoDB.
-    Returns an error if FETCH_WEATHER is set to False.
-    Encrypts the weather data before storing it and also stores a hash of the encrypted data.
-    """
-    if not FETCH_WEATHER:
-        return jsonify({"error": "Weather data fetch is disabled."}), 403
-    
-    response = requests.get(WEATHER_API_URL, params={"q": "London", "appid": WEATHER_API_KEY})
-    if response.status_code != 200:
-        return jsonify({"error": "Failed to fetch weather data"}), 500
-    
-    weather_data = response.json()
+    try:
+        if not FETCH_WEATHER:
+            print("FETCH_WEATHER is set to False")
+            return jsonify({"error": "Weather data fetch is disabled."}), 403
 
-    # Encrypt the weather data
-    key = generate_key()
-    encrypted_data = encrypt_data(weather_data, key)
+        response = requests.get(WEATHER_API_URL, params={"q": "London", "appid": WEATHER_API_KEY})
+        if response.status_code != 200:
+            print(f"Failed to fetch weather data: {response.status_code}")
+            return jsonify({"error": "Failed to fetch weather data"}), 500
 
-    # Compute hash of the encrypted data
-    data_hash = get_hashed_data(encrypted_data)
-    
-    # Store encrypted data and hash in MongoDB
-    record = {
-        "data": encrypted_data,
-        "hash": data_hash
-    }
-    result_record = collection.insert_one(record)
-    result_key = keys_collection.insert_one({"key": key})
+        weather_data = response.json()
+        print(f"Fetched weather data: {weather_data}")
 
-    # Add debug prints
-    print(f"Inserted record ID: {result_record.inserted_id}")
-    print(f"Inserted key ID: {result_key.inserted_id}")
+        # Encrypt the weather data
+        key = generate_key()
+        encrypted_data = encrypt_data(weather_data, key)
+        print(f"Encrypted data: {encrypted_data}")
 
-    return jsonify({"message": "Weather data fetched and stored successfully"}), 200
+        # Compute hash of the encrypted data
+        data_hash = get_hashed_data(encrypted_data)
+        print(f"Data hash: {data_hash}")
+
+        # Store encrypted data and hash in MongoDB
+        record = {
+            "data": encrypted_data,
+            "hash": data_hash
+        }
+        print(f"Record to be inserted: {record}")
+
+        try:
+            result_record = collection.insert_one(record)
+            print(f"Inserted record ID: {result_record.inserted_id}")
+        except Exception as e:
+            print(f"Error inserting record: {e}")
+
+        try:
+            result_key = keys_collection.insert_one({"key": key})
+            print(f"Inserted key ID: {result_key.inserted_id}")
+        except Exception as e:
+            print(f"Error inserting key: {e}")
+
+        return jsonify({"message": "Weather data fetched and stored successfully"}), 200
+    except Exception as e:
+        print(f"Exception occurred: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 @app.route('/weather', methods=['POST'])
 def get_weather():
