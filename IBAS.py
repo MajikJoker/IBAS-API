@@ -87,9 +87,6 @@ def fetch_and_store_weather():
 
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
-    """
-    Manually fetch and store weather data.
-    """
     try:
         fetch_and_store_weather()
         return jsonify({"message": "Weather data fetched and stored successfully"}), 200
@@ -99,9 +96,6 @@ def fetch_weather():
 
 @app.route('/weather', methods=['POST'])
 def get_weather():
-    """
-    Fetch and return weather data for the provided latitude and longitude.
-    """
     data = request.json
     latitude = data['latitude']
     longitude = data['longitude']
@@ -125,9 +119,6 @@ def get_weather():
 
 @app.route('/get-weather', methods=['GET'])
 def get_stored_weather():
-    """
-    Fetch and return the stored weather data from MongoDB.
-    """
     record = collection.find_one()
     key_record = keys_collection.find_one()
 
@@ -146,24 +137,18 @@ def get_stored_weather():
     return jsonify(weather_data), 200
 
 def handle_shutdown_signal(signum, frame):
-    """
-    Handle shutdown signals to terminate the application gracefully.
-    """
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
-    scheduler.shutdown()
     sys.exit(0)
 
-# Setup signal handlers for graceful shutdown
 signal.signal(signal.SIGTERM, handle_shutdown_signal)
 signal.signal(signal.SIGINT, handle_shutdown_signal)
 
+# Scheduler setup
+scheduler = BackgroundScheduler()
+scheduler.add_job(fetch_and_store_weather, 'interval', hours=1)
+scheduler.start()
+
 if __name__ == '__main__':
     logger.info("Starting Flask application")
-
-    # Initialize and start the scheduler
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(fetch_and_store_weather, 'interval', hours=1)
-    scheduler.start()
-
-    # Start the Flask application
+    fetch_and_store_weather()  # Initial fetch
     app.run(debug=True, host='0.0.0.0', port=8000)
