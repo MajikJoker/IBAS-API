@@ -26,11 +26,10 @@ FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
 # MongoDB setup
 client = MongoClient(MONGO_URI)
-db = client.get_database('ibas-server')  # Ensure the database name is fetched correctly
+db = client.get_database('ibas-server')
 collection = db.weather_records
 keys_collection = db.transitKeys
 
-# Function to test the MongoDB connection
 @app.before_first_request
 def test_db_connection():
     try:
@@ -40,25 +39,19 @@ def test_db_connection():
         logger.error(f"Failed to connect to MongoDB: {e}")
 
 def fetch_and_store_weather():
-    """
-    Function to fetch weather data and store it in MongoDB.
-    """
     try:
         response = requests.get(WEATHER_API_URL, params={"q": "London", "appid": WEATHER_API_KEY})
-        response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
+        response.raise_for_status()
         weather_data = response.json()
         logger.debug(f"Fetched weather data: {weather_data}")
 
-        # Encrypt the weather data
         key = generate_key()
         encrypted_data = encrypt_data(weather_data, key)
         logger.debug(f"Encrypted data: {encrypted_data}")
 
-        # Compute hash of the encrypted data
         data_hash = get_hashed_data(encrypted_data)
         logger.debug(f"Data hash: {data_hash}")
 
-        # Store encrypted data and hash in MongoDB
         record = {
             "data": encrypted_data,
             "hash": data_hash
@@ -76,7 +69,6 @@ def fetch_and_store_weather():
     except Exception as e:
         logger.error(f"Exception occurred: {e}")
 
-# Initialize and start the scheduler
 scheduler = BackgroundScheduler()
 if FETCH_WEATHER:
     scheduler.add_job(
@@ -103,9 +95,6 @@ def fetch_weather():
 
 @app.route('/weather', methods=['POST'])
 def get_weather():
-    """
-    Retrieves weather data from the external API based on provided latitude and longitude.
-    """
     data = request.json
     latitude = data['latitude']
     longitude = data['longitude']
@@ -116,7 +105,6 @@ def get_weather():
         "appid": WEATHER_API_KEY
     }
 
-    # Fetch weather data from external API using latitude and longitude
     response = requests.get(WEATHER_API_URL, params=params)
 
     if response.status_code == 200:
@@ -130,12 +118,6 @@ def get_weather():
 
 @app.route('/get-weather', methods=['GET'])
 def get_stored_weather():
-    """
-    Retrieves the latest stored weather data from MongoDB.
-    Decrypts the data and checks its integrity using the stored hash.
-    Returns an error if no data is available or if data integrity is compromised.
-    """
-    # Find the latest record in the collection
     record = collection.find_one()
     key_record = keys_collection.find_one()
     
@@ -146,32 +128,26 @@ def get_stored_weather():
     stored_hash = record["hash"]
     key = key_record["key"]
 
-    # Check the integrity of the encrypted data
     if not check_hash(encrypted_data, stored_hash):
         return jsonify({"error": "Data integrity compromised"}), 500
 
-    # Decrypt the weather data
     weather_data = decrypt_data(encrypted_data, key)
 
     return jsonify(weather_data), 200
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """
-    Health check endpoint to ensure the application is running.
-    """
     return "Healthy", 200
 
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
-    scheduler.shutdown()
+    if scheduler.running:
+        scheduler.shutdown()
     sys.exit(0)
 
-# Register shutdown signal handlers
 signal.signal(signal.SIGTERM, handle_shutdown_signal)
 signal.signal(signal.SIGINT, handle_shutdown_signal)
 
 if __name__ == '__main__':
-    # Run the Flask app on the specified host and port
     logger.info("Starting Flask application.")
     app.run(debug=True, host='0.0.0.0', port=8000)
