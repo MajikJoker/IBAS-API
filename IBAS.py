@@ -91,6 +91,7 @@ if FETCH_WEATHER:
         name='Fetch weather data every hour',
         replace_existing=True)
     scheduler.start()
+    logger.info("Scheduler started and job added to fetch weather data every hour.")
 
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
@@ -161,4 +162,5 @@ def get_stored_weather():
 
 if __name__ == '__main__':
     # Run the Flask app on the specified host and port
+    logger.info("Starting Flask application.")
     app.run(debug=True, host='0.0.0.0', port=8000)
