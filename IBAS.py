@@ -8,7 +8,7 @@ import sys
 from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, check_hash
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -54,7 +54,7 @@ def fetch_and_store_weather():
         return
 
     weather_data = response.json()
-    weather_data['timestamp'] = datetime.utcnow().isoformat()
+    weather_data['timestamp'] = datetime.now(timezone.utc).isoformat()
     logger.info(f"Fetched weather data: {weather_data}")
 
     # Encrypt the weather data
