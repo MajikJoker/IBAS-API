@@ -162,6 +162,13 @@ def get_stored_weather():
 
     return jsonify(weather_data), 200
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    """
+    Health check endpoint to ensure the application is running.
+    """
+    return "Healthy", 200
+
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
     scheduler.shutdown()
