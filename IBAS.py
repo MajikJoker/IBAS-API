@@ -6,6 +6,8 @@ from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, che
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import logging
+import signal
+import sys
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -159,6 +161,15 @@ def get_stored_weather():
     weather_data = decrypt_data(encrypted_data, key)
 
     return jsonify(weather_data), 200
+
+def handle_shutdown_signal(signum, frame):
+    logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
+    scheduler.shutdown()
+    sys.exit(0)
+
+# Register shutdown signal handlers
+signal.signal(signal.SIGTERM, handle_shutdown_signal)
+signal.signal(signal.SIGINT, handle_shutdown_signal)
 
 if __name__ == '__main__':
     # Run the Flask app on the specified host and port
