@@ -45,10 +45,7 @@ def fetch_and_store_weather():
     """
     try:
         response = requests.get(WEATHER_API_URL, params={"q": "London", "appid": WEATHER_API_KEY})
-        if response.status_code != 200:
-            logger.error(f"Failed to fetch weather data: {response.status_code}")
-            return
-
+        response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
         weather_data = response.json()
         logger.debug(f"Fetched weather data: {weather_data}")
 
@@ -68,18 +65,14 @@ def fetch_and_store_weather():
         }
         logger.debug(f"Record to be inserted: {record}")
 
-        try:
-            result_record = collection.insert_one(record)
-            logger.info(f"Inserted record ID: {result_record.inserted_id}")
-        except Exception as e:
-            logger.error(f"Error inserting record: {e}")
+        result_record = collection.insert_one(record)
+        logger.info(f"Inserted record ID: {result_record.inserted_id}")
 
-        try:
-            result_key = keys_collection.insert_one({"key": key})
-            logger.info(f"Inserted key ID: {result_key.inserted_id}")
-        except Exception as e:
-            logger.error(f"Error inserting key: {e}")
+        result_key = keys_collection.insert_one({"key": key})
+        logger.info(f"Inserted key ID: {result_key.inserted_id}")
 
+    except requests.exceptions.RequestException as e:
+        logger.error(f"RequestException: {e}")
     except Exception as e:
         logger.error(f"Exception occurred: {e}")
 
