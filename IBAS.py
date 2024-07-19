@@ -138,6 +138,7 @@ def get_stored_weather():
 
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
+    scheduler.shutdown()  # Shutdown the scheduler gracefully
     sys.exit(0)
 
 signal.signal(signal.SIGTERM, handle_shutdown_signal)
@@ -145,7 +146,7 @@ signal.signal(signal.SIGINT, handle_shutdown_signal)
 
 # Scheduler setup
 scheduler = BackgroundScheduler()
-scheduler.add_job(fetch_and_store_weather, 'interval', hours=1)
+scheduler.add_job(fetch_and_store_weather, 'interval', hours=0.017)
 scheduler.start()
 
 if __name__ == '__main__':
