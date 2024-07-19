@@ -7,6 +7,8 @@ import signal
 import sys
 from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, check_hash
 from dotenv import load_dotenv
+from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -38,49 +40,58 @@ def test_db_connection():
     except Exception as e:
         logger.error(f"Failed to connect to MongoDB: {e}")
 
+def fetch_and_store_weather():
+    """
+    Fetches weather data from the weather API, encrypts it, and stores it in MongoDB.
+    """
+    if not FETCH_WEATHER:
+        logger.warning("FETCH_WEATHER is set to False")
+        return
+
+    response = requests.get(WEATHER_API_URL, params={"q": "London", "appid": WEATHER_API_KEY})
+    if response.status_code != 200:
+        logger.error(f"Failed to fetch weather data: {response.status_code}")
+        return
+
+    weather_data = response.json()
+    weather_data['timestamp'] = datetime.utcnow().isoformat()
+    logger.info(f"Fetched weather data: {weather_data}")
+
+    # Encrypt the weather data
+    key = generate_key()
+    encrypted_data = encrypt_data(weather_data, key)
+    logger.info(f"Encrypted data: {encrypted_data}")
+
+    # Compute hash of the encrypted data
+    data_hash = get_hashed_data(encrypted_data)
+    logger.info(f"Data hash: {data_hash}")
+
+    # Store encrypted data and hash in MongoDB
+    record = {
+        "data": encrypted_data,
+        "hash": data_hash
+    }
+    logger.info(f"Record to be inserted: {record}")
+
+    try:
+        result_record = collection.insert_one(record)
+        logger.info(f"Inserted record ID: {result_record.inserted_id}")
+    except Exception as e:
+        logger.error(f"Error inserting record: {e}")
+
+    try:
+        result_key = keys_collection.insert_one({"key": key})
+        logger.info(f"Inserted key ID: {result_key.inserted_id}")
+    except Exception as e:
+        logger.error(f"Error inserting key: {e}")
+
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
+    """
+    Manually fetch and store weather data.
+    """
     try:
-        if not FETCH_WEATHER:
-            logger.warning("FETCH_WEATHER is set to False")
-            return jsonify({"error": "Weather data fetch is disabled."}), 403
-
-        response = requests.get(WEATHER_API_URL, params={"q": "London", "appid": WEATHER_API_KEY})
-        if response.status_code != 200:
-            logger.error(f"Failed to fetch weather data: {response.status_code}")
-            return jsonify({"error": "Failed to fetch weather data"}), 500
-
-        weather_data = response.json()
-        logger.info(f"Fetched weather data: {weather_data}")
-
-        # Encrypt the weather data
-        key = generate_key()
-        encrypted_data = encrypt_data(weather_data, key)
-        logger.info(f"Encrypted data: {encrypted_data}")
-
-        # Compute hash of the encrypted data
-        data_hash = get_hashed_data(encrypted_data)
-        logger.info(f"Data hash: {data_hash}")
-
-        # Store encrypted data and hash in MongoDB
-        record = {
-            "data": encrypted_data,
-            "hash": data_hash
-        }
-        logger.info(f"Record to be inserted: {record}")
-
-        try:
-            result_record = collection.insert_one(record)
-            logger.info(f"Inserted record ID: {result_record.inserted_id}")
-        except Exception as e:
-            logger.error(f"Error inserting record: {e}")
-
-        try:
-            result_key = keys_collection.insert_one({"key": key})
-            logger.info(f"Inserted key ID: {result_key.inserted_id}")
-        except Exception as e:
-            logger.error(f"Error inserting key: {e}")
-
+        fetch_and_store_weather()
         return jsonify({"message": "Weather data fetched and stored successfully"}), 200
     except Exception as e:
         logger.exception("Exception occurred")
@@ -88,6 +99,9 @@ def fetch_weather():
 
 @app.route('/weather', methods=['POST'])
 def get_weather():
+    """
+    Fetch and return weather data for the provided latitude and longitude.
+    """
     data = request.json
     latitude = data['latitude']
     longitude = data['longitude']
@@ -111,6 +125,9 @@ def get_weather():
 
 @app.route('/get-weather', methods=['GET'])
 def get_stored_weather():
+    """
+    Fetch and return the stored weather data from MongoDB.
+    """
     record = collection.find_one()
     key_record = keys_collection.find_one()
 
@@ -129,12 +146,24 @@ def get_stored_weather():
     return jsonify(weather_data), 200
 
 def handle_shutdown_signal(signum, frame):
+    """
+    Handle shutdown signals to terminate the application gracefully.
+    """
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
+    scheduler.shutdown()
     sys.exit(0)
 
+# Setup signal handlers for graceful shutdown
 signal.signal(signal.SIGTERM, handle_shutdown_signal)
 signal.signal(signal.SIGINT, handle_shutdown_signal)
 
 if __name__ == '__main__':
     logger.info("Starting Flask application")
+
+    # Initialize and start the scheduler
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(fetch_and_store_weather, 'interval', hours=1)
+    scheduler.start()
+
+    # Start the Flask application
     app.run(debug=True, host='0.0.0.0', port=8000)
