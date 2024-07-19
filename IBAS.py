@@ -5,6 +5,10 @@ import os
 from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, check_hash
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -29,9 +33,9 @@ keys_collection = db.transitKeys
 def test_db_connection():
     try:
         client.admin.command('ping')
-        print("MongoDB connection established successfully.")
+        logger.info("MongoDB connection established successfully.")
     except Exception as e:
-        print(f"Failed to connect to MongoDB: {e}")
+        logger.error(f"Failed to connect to MongoDB: {e}")
 
 def fetch_and_store_weather():
     """
@@ -40,42 +44,42 @@ def fetch_and_store_weather():
     try:
         response = requests.get(WEATHER_API_URL, params={"q": "London", "appid": WEATHER_API_KEY})
         if response.status_code != 200:
-            print(f"Failed to fetch weather data: {response.status_code}")
+            logger.error(f"Failed to fetch weather data: {response.status_code}")
             return
 
         weather_data = response.json()
-        print(f"Fetched weather data: {weather_data}")
+        logger.debug(f"Fetched weather data: {weather_data}")
 
         # Encrypt the weather data
         key = generate_key()
         encrypted_data = encrypt_data(weather_data, key)
-        print(f"Encrypted data: {encrypted_data}")
+        logger.debug(f"Encrypted data: {encrypted_data}")
 
         # Compute hash of the encrypted data
         data_hash = get_hashed_data(encrypted_data)
-        print(f"Data hash: {data_hash}")
+        logger.debug(f"Data hash: {data_hash}")
 
         # Store encrypted data and hash in MongoDB
         record = {
             "data": encrypted_data,
             "hash": data_hash
         }
-        print(f"Record to be inserted: {record}")
+        logger.debug(f"Record to be inserted: {record}")
 
         try:
             result_record = collection.insert_one(record)
-            print(f"Inserted record ID: {result_record.inserted_id}")
+            logger.info(f"Inserted record ID: {result_record.inserted_id}")
         except Exception as e:
-            print(f"Error inserting record: {e}")
+            logger.error(f"Error inserting record: {e}")
 
         try:
             result_key = keys_collection.insert_one({"key": key})
-            print(f"Inserted key ID: {result_key.inserted_id}")
+            logger.info(f"Inserted key ID: {result_key.inserted_id}")
         except Exception as e:
-            print(f"Error inserting key: {e}")
+            logger.error(f"Error inserting key: {e}")
 
     except Exception as e:
-        print(f"Exception occurred: {e}")
+        logger.error(f"Exception occurred: {e}")
 
 # Initialize and start the scheduler
 scheduler = BackgroundScheduler()
@@ -92,13 +96,13 @@ if FETCH_WEATHER:
 def fetch_weather():
     try:
         if not FETCH_WEATHER:
-            print("FETCH_WEATHER is set to False")
+            logger.info("FETCH_WEATHER is set to False")
             return jsonify({"error": "Weather data fetch is disabled."}), 403
 
         fetch_and_store_weather()
         return jsonify({"message": "Weather data fetched and stored successfully"}), 200
     except Exception as e:
-        print(f"Exception occurred: {e}")
+        logger.error(f"Exception occurred: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
 
 @app.route('/weather', methods=['POST'])
