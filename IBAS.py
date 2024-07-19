@@ -3,6 +3,8 @@ import requests
 from pymongo import MongoClient
 import os
 from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, check_hash
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 
 app = Flask(__name__)
 
@@ -31,17 +33,15 @@ def test_db_connection():
     except Exception as e:
         print(f"Failed to connect to MongoDB: {e}")
 
-@app.route('/fetch-weather', methods=['GET'])
-def fetch_weather():
+def fetch_and_store_weather():
+    """
+    Function to fetch weather data and store it in MongoDB.
+    """
     try:
-        if not FETCH_WEATHER:
-            print("FETCH_WEATHER is set to False")
-            return jsonify({"error": "Weather data fetch is disabled."}), 403
-
         response = requests.get(WEATHER_API_URL, params={"q": "London", "appid": WEATHER_API_KEY})
         if response.status_code != 200:
             print(f"Failed to fetch weather data: {response.status_code}")
-            return jsonify({"error": "Failed to fetch weather data"}), 500
+            return
 
         weather_data = response.json()
         print(f"Fetched weather data: {weather_data}")
@@ -74,6 +74,28 @@ def fetch_weather():
         except Exception as e:
             print(f"Error inserting key: {e}")
 
+    except Exception as e:
+        print(f"Exception occurred: {e}")
+
+# Initialize and start the scheduler
+scheduler = BackgroundScheduler()
+if FETCH_WEATHER:
+    scheduler.add_job(
+        func=fetch_and_store_weather,
+        trigger=IntervalTrigger(hours=1),
+        id='weather_fetch_job',
+        name='Fetch weather data every hour',
+        replace_existing=True)
+    scheduler.start()
+
+@app.route('/fetch-weather', methods=['GET'])
+def fetch_weather():
+    try:
+        if not FETCH_WEATHER:
+            print("FETCH_WEATHER is set to False")
+            return jsonify({"error": "Weather data fetch is disabled."}), 403
+
+        fetch_and_store_weather()
         return jsonify({"message": "Weather data fetched and stored successfully"}), 200
     except Exception as e:
         print(f"Exception occurred: {e}")
