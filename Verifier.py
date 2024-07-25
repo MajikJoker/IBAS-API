@@ -83,7 +83,11 @@ def main():
 
     identities = [signer.identity for signer in signers]
     is_valid = SimpleSigner.verify_aggregate(identities, data, aggregate_signature, public_keys)
-    print("Aggregate signature valid:", is_valid)
+    
+    if is_valid:
+        print("Aggregate signature valid:", is_valid)
+    else:
+        print("Aggregate signature valid:", is_valid)
 
 if __name__ == "__main__":
     main()
