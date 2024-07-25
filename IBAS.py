@@ -9,6 +9,7 @@ from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, che
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
+from Verifier import SimpleSigner
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
