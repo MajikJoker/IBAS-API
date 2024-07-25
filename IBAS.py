@@ -88,6 +88,10 @@ def fetch_and_store_weather():
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
     try:
+        if not FETCH_WEATHER:
+            logger.warning("FETCH_WEATHER is set to False")
+            return jsonify({"message": "Weather data fetch is disabled"}), 403
+
         fetch_and_store_weather()
         return jsonify({"message": "Weather data fetched and stored successfully"}), 200
     except Exception as e:
@@ -153,4 +157,3 @@ if __name__ == '__main__':
     logger.info("Starting Flask application")
     fetch_and_store_weather()  # Initial fetch
     app.run(debug=True, host='0.0.0.0', port=8000)
-    
