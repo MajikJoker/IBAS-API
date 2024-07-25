@@ -9,7 +9,6 @@ from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, che
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
-from Verifier import SimpleSigner
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -140,6 +139,27 @@ def get_stored_weather():
     weather_data = decrypt_data(encrypted_data, key)
 
     return jsonify(weather_data), 200
+
+@app.route('/feels-like', methods=['GET'])
+def get_feels_like():
+    record = collection.find_one()
+    key_record = keys_collection.find_one()
+
+    if not record or not key_record:
+        return jsonify({"error": "No weather data available"}), 404
+
+    encrypted_data = record["data"]
+    stored_hash = record["hash"]
+    key = key_record["key"]
+
+    if not check_hash(encrypted_data, stored_hash):
+        return jsonify({"error": "Data integrity compromised"}), 500
+
+    weather_data = decrypt_data(encrypted_data, key)
+
+    # Extract the feels_like temperature
+    feels_like = weather_data['main']['feels_like']
+    return jsonify({"feels_like": feels_like}), 200
 
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
