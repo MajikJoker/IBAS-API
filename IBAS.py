@@ -140,26 +140,26 @@ def get_stored_weather():
 
     return jsonify(weather_data), 200
 
-@app.route('/feels-like', methods=['GET'])
-def get_feels_like():
-    record = collection.find_one()
-    key_record = keys_collection.find_one()
+# @app.route('/feels-like', methods=['GET'])
+# def get_feels_like():
+#     record = collection.find_one()
+#     key_record = keys_collection.find_one()
 
-    if not record or not key_record:
-        return jsonify({"error": "No weather data available"}), 404
+#     if not record or not key_record:
+#         return jsonify({"error": "No weather data available"}), 404
 
-    encrypted_data = record["data"]
-    stored_hash = record["hash"]
-    key = key_record["key"]
+#     encrypted_data = record["data"]
+#     stored_hash = record["hash"]
+#     key = key_record["key"]
 
-    if not check_hash(encrypted_data, stored_hash):
-        return jsonify({"error": "Data integrity compromised"}), 500
+#     if not check_hash(encrypted_data, stored_hash):
+#         return jsonify({"error": "Data integrity compromised"}), 500
 
-    weather_data = decrypt_data(encrypted_data, key)
+#     weather_data = decrypt_data(encrypted_data, key)
 
-    # Extract the feels_like temperature
-    feels_like = weather_data['main']['feels_like']
-    return jsonify({"feels_like": feels_like}), 200
+#     # Extract the feels_like temperature
+#     feels_like = weather_data['main']['feels_like']
+#     return jsonify({"feels_like": feels_like}), 200
 
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
