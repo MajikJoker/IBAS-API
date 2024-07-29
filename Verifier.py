@@ -101,6 +101,10 @@ class SimpleSigner:
                 return False
         return True
 
+@app.route('/', methods=['GET'])
+def home():
+    return "IBAS API is running"
+
 @app.route('/setup-identity', methods=['POST'])
 def setup_identity():
     identity = request.json.get('identity')
