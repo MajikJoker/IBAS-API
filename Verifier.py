@@ -167,6 +167,15 @@ def store_data_in_mongo(data, aggregate_signature, identities):
     collection.insert_one(record)
     logger.info("Data and aggregate signature stored in MongoDB.")
 
+@app.route('/list-routes', methods=['GET'])
+def list_routes():
+    output = []
+    for rule in app.url_map.iter_rules():
+        methods = ','.join(sorted(rule.methods))
+        line = f"{rule.endpoint}: {methods} {rule}"
+        output.append(line)
+    return jsonify(output), 200
+
 if __name__ == '__main__':
     logger.info("Starting Flask application")
     app.run(debug=True, host='0.0.0.0', port=8000)
