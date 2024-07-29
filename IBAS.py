@@ -20,11 +20,10 @@ app = Flask(__name__)
 # Load environment variables from .env file
 load_dotenv()
 
-# Read environment variables for weather API URL, API key, MongoDB URI, and whether to fetch weather
+# Read environment variables for weather API URL, API key, MongoDB URI
 WEATHER_API_URL = os.environ.get("WEATHER_API_URL")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 MONGO_URI = os.environ.get("AZURE_COSMOS_CONNECTIONSTRING")
-FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
 # MongoDB setup
 client = MongoClient(MONGO_URI)
@@ -45,8 +44,29 @@ def fetch_and_store_weather():
     """
     Fetches weather data from the weather API, encrypts it, and stores it in MongoDB.
     """
-    if not FETCH_WEATHER:
-        logger.warning("FETCH_WEATHER is set to False")
+    signers = []
+    public_keys = []
+    signatures = []
+
+    identities = ["signer1", "signer2"]  # Example identities, should be dynamic
+    for identity in identities:
+        signer = SimpleSigner(identity)
+        signer.generate_keys()
+        signers.append(signer)
+        public_keys.append(signer.public_key)
+
+    data = b"weather_data"  # Example data, should be fetched weather data
+
+    for signer in signers:
+        signature = signer.sign(data)
+        signatures.append(signature)
+
+    aggregate_signature = SimpleSigner.aggregate_signatures(signatures)
+
+    is_valid = SimpleSigner.verify_aggregate(identities, data, aggregate_signature, public_keys)
+    
+    if not is_valid:
+        logger.warning("Aggregate signature is invalid, aborting weather fetch.")
         return
 
     response = requests.get(WEATHER_API_URL, params={"q": "London", "appid": WEATHER_API_KEY})
@@ -90,10 +110,6 @@ def fetch_and_store_weather():
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
     try:
-        if not FETCH_WEATHER:
-            logger.warning("FETCH_WEATHER is set to False")
-            return jsonify({"message": "Weather data fetch is disabled"}), 403
-
         fetch_and_store_weather()
         return jsonify({"message": "Weather data fetched and stored successfully"}), 200
     except Exception as e:
@@ -141,27 +157,6 @@ def get_stored_weather():
     weather_data = decrypt_data(encrypted_data, key)
 
     return jsonify(weather_data), 200
-
-# @app.route('/feels-like', methods=['GET'])
-# def get_feels_like():
-#     record = collection.find_one()
-#     key_record = keys_collection.find_one()
-
-#     if not record or not key_record:
-#         return jsonify({"error": "No weather data available"}), 404
-
-#     encrypted_data = record["data"]
-#     stored_hash = record["hash"]
-#     key = key_record["key"]
-
-#     if not check_hash(encrypted_data, stored_hash):
-#         return jsonify({"error": "Data integrity compromised"}), 500
-
-#     weather_data = decrypt_data(encrypted_data, key)
-
-#     # Extract the feels_like temperature
-#     feels_like = weather_data['main']['feels_like']
-#     return jsonify({"feels_like": feels_like}), 200
 
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
