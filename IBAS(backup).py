@@ -1,9 +1,13 @@
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Flask, request, jsonify
 import requests
 from pymongo import MongoClient
 import os
+import signal
+import sys
 from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, check_hash
+from dotenv import load_dotenv
+from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
 from Verifier import SimpleSigner
 
@@ -11,8 +15,10 @@ from Verifier import SimpleSigner
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Define a Blueprint for ibas
-ibas_routes = Blueprint('ibas_routes', __name__)
+app = Flask(__name__)
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Read environment variables for weather API URL, API key, MongoDB URI
 WEATHER_API_URL = os.environ.get("WEATHER_API_URL")
@@ -25,7 +31,8 @@ db = client.get_database('ibas-server')
 collection = db.weather_records
 keys_collection = db.transitKeys
 
-@ibas_routes.before_app_first_request
+# Function to test the MongoDB connection
+@app.before_first_request
 def test_db_connection():
     try:
         client.admin.command('ping')
@@ -100,7 +107,7 @@ def fetch_and_store_weather():
     except Exception as e:
         logger.error(f"Error inserting key: {e}")
 
-@ibas_routes.route('/fetch-weather', methods=['GET'])
+@app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
     try:
         fetch_and_store_weather()
@@ -109,7 +116,7 @@ def fetch_weather():
         logger.exception("Exception occurred")
         return jsonify({"error": "Internal Server Error"}), 500
 
-@ibas_routes.route('/weather', methods=['POST'])
+@app.route('/weather', methods=['POST'])
 def get_weather():
     data = request.json
     latitude = data['latitude']
@@ -132,7 +139,7 @@ def get_weather():
             "message": response.text
         }), response.status_code
 
-@ibas_routes.route('/get-weather', methods=['GET'])
+@app.route('/get-weather', methods=['GET'])
 def get_stored_weather():
     record = collection.find_one()
     key_record = keys_collection.find_one()
@@ -150,3 +157,21 @@ def get_stored_weather():
     weather_data = decrypt_data(encrypted_data, key)
 
     return jsonify(weather_data), 200
+
+def handle_shutdown_signal(signum, frame):
+    logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
+    scheduler.shutdown()  # Shutdown the scheduler gracefully
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, handle_shutdown_signal)
+signal.signal(signal.SIGINT, handle_shutdown_signal)
+
+# Scheduler setup
+scheduler = BackgroundScheduler()
+scheduler.add_job(fetch_and_store_weather, 'interval', hours=1)
+scheduler.start()
+
+if __name__ == '__main__':
+    logger.info("Starting Flask application")
+    fetch_and_store_weather()  # Initial fetch
+    app.run(debug=True, host='0.0.0.0', port=8000)
