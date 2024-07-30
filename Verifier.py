@@ -83,47 +83,55 @@ class SimpleSigner:
 
 @verifier_routes.route('/setup-identity', methods=['POST'])
 def setup_identity():
-    identity = request.json.get('identity')
-    if not identity:
-        return jsonify({"error": "Identity is required"}), 400
+    try:
+        identity = request.json.get('identity')
+        if not identity:
+            return jsonify({"error": "Identity is required"}), 400
 
-    signer = SimpleSigner(identity)
-    signer.generate_keys()
-    signer.save_keys_to_db()
-    return jsonify({"message": f"Keys for identity '{identity}' have been generated and stored in the database."}), 200
+        signer = SimpleSigner(identity)
+        signer.generate_keys()
+        signer.save_keys_to_db()
+        return jsonify({"message": f"Keys for identity '{identity}' have been generated and stored in the database."}), 200
+    except Exception as e:
+        logger.exception("Exception occurred in setup_identity: %s", e)
+        return jsonify({"error": "Internal Server Error"}), 500
 
 @verifier_routes.route('/verify-signatures', methods=['POST'])
 def verify_signatures():
-    signers = []
-    public_keys = []
-    signatures = []
+    try:
+        signers = []
+        public_keys = []
+        signatures = []
 
-    num_signers = request.json.get('num_signers')
-    identities = request.json.get('identities')
-    
-    if not num_signers or not identities or len(identities) != num_signers:
-        return jsonify({"error": "Invalid number of signers or identities"}), 400
+        num_signers = request.json.get('num_signers')
+        identities = request.json.get('identities')
+        
+        if not num_signers or not identities or len(identities) != num_signers:
+            return jsonify({"error": "Invalid number of signers or identities"}), 400
 
-    for identity in identities:
-        signer = SimpleSigner(identity)
-        try:
-            signer.load_keys_from_db()
-        except ValueError as e:
-            return jsonify({"error": str(e)}), 400
-        signers.append(signer)
-        public_keys.append(signer.public_key)
+        for identity in identities:
+            signer = SimpleSigner(identity)
+            try:
+                signer.load_keys_from_db()
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
+            signers.append(signer)
+            public_keys.append(signer.public_key)
 
-    data = b"weather_data"  # Example data, should be fetched weather data
+        data = b"weather_data"  # Example data, should be fetched weather data
 
-    for signer in signers:
-        signature = signer.sign(data)
-        signatures.append(signature)
+        for signer in signers:
+            signature = signer.sign(data)
+            signatures.append(signature)
 
-    aggregate_signature = SimpleSigner.aggregate_signatures(signatures)
+        aggregate_signature = SimpleSigner.aggregate_signatures(signatures)
 
-    is_valid = SimpleSigner.verify_aggregate(identities, data, aggregate_signature, public_keys)
-    
-    if is_valid:
-        return jsonify({"message": "Aggregate signature valid"}), 200
-    else:
-        return jsonify({"error": "Aggregate signature invalid"}), 400
+        is_valid = SimpleSigner.verify_aggregate(identities, data, aggregate_signature, public_keys)
+        
+        if is_valid:
+            return jsonify({"message": "Aggregate signature valid"}), 200
+        else:
+            return jsonify({"error": "Aggregate signature invalid"}), 400
+    except Exception as e:
+        logger.exception("Exception occurred in verify_signatures: %s", e)
+        return jsonify({"error": "Internal Server Error"}), 500
