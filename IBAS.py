@@ -9,6 +9,9 @@ from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, che
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
+from Crypto.PublicKey import RSA
+from Crypto.Signature import pkcs1_15
+from Crypto.Hash import SHA256
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,7 +26,7 @@ load_dotenv()
 WEATHER_API_URL = os.environ.get("WEATHER_API_URL")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 MONGO_URI = os.environ.get("AZURE_COSMOS_CONNECTIONSTRING")
-# FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
+FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
 # Function to test the MongoDB connection
 @app.before_first_request
@@ -40,6 +43,47 @@ db = client.get_database('ibas-server')
 weatherRecords = db.weather_records
 keysCollection = db.transitKeys
 customerDB = client.get_database('Customers')
+
+class SimpleSigner:
+    def __init__(self, identity):
+        self.identity = identity  # Store the identity of the signer
+        self.key = None  # Placeholder for the RSA private key
+        self.public_key = None  # Placeholder for the RSA public key
+
+    def generate_keys(self):
+        self.key = RSA.generate(2048)  # Generate a 2048-bit RSA key pair
+        self.public_key = self.key.publickey()  # Extract the public key
+
+    def save_keys(self, private_key_file, public_key_file):
+        with open(private_key_file, 'wb') as f:
+            f.write(self.key.export_key())  # Save the private key to a file
+        with open(public_key_file, 'wb') as f:
+            f.write(self.public_key.export_key())  # Save the public key to a file
+
+    def load_keys(self, private_key_file, public_key_file):
+        with open(private_key_file, 'rb') as f:
+            self.key = RSA.import_key(f.read())  # Load the private key from a file
+        with open(public_key_file, 'rb') as f:
+            self.public_key = RSA.import_key(f.read())  # Load the public key from a file
+
+    def sign(self, data):
+        message = self.identity.encode() + data  # Concatenate the identity with the data
+        h = SHA256.new(message)  # Create a SHA-256 hash of the message
+        signature = pkcs1_15.new(self.key).sign(h)  # Sign the hash with the private key
+        return signature  # Return the signature
+
+    def verify(self, identity, data, signature):
+        message = identity.encode() + data  # Concatenate the identity with the data
+        h = SHA256.new(message)  # Create a SHA-256 hash of the message
+        try:
+            pkcs1_15.new(self.public_key).verify(h, signature)  # Verify the signature with the public key
+            return True  # Return True if verification is successful
+        except (ValueError, TypeError):
+            return False  # Return False if verification fails
+
+    @staticmethod
+    def aggregate_signatures(signatures):
+        return b''.join(signatures)  # Concatenate all signatures into one aggregate signature
 
 @app.route('/setup', methods=['GET'])
 def setup():
@@ -209,27 +253,6 @@ def get_stored_weather():
     weather_data = decrypt_data(encrypted_data, key)
 
     return jsonify(weather_data), 200
-
-# @app.route('/feels-like', methods=['GET'])
-# def get_feels_like():
-#     record = weatherRecords.find_one()
-#     key_record = keysCollection.find_one()
-
-#     if not record or not key_record:
-#         return jsonify({"error": "No weather data available"}), 404
-
-#     encrypted_data = record["data"]
-#     stored_hash = record["hash"]
-#     key = key_record["key"]
-
-#     if not check_hash(encrypted_data, stored_hash):
-#         return jsonify({"error": "Data integrity compromised"}), 500
-
-#     weather_data = decrypt_data(encrypted_data, key)
-
-#     # Extract the feels_like temperature
-#     feels_like = weather_data['main']['feels_like']
-#     return jsonify({"feels_like": feels_like}), 200
 
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
