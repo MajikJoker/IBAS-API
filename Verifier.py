@@ -1,25 +1,7 @@
-import logging
-from flask import Blueprint, request, jsonify
-from pymongo import MongoClient
-import os
 from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
 from Crypto.Signature import pkcs1_15
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Define a Blueprint for verifier
-verifier_routes = Blueprint('verifier_routes', __name__)
-
-# Read environment variables
-MONGO_URI = os.environ.get("AZURE_COSMOS_CONNECTIONSTRING")
-
-# MongoDB setup
-client = MongoClient(MONGO_URI)
-db = client.get_database('ibas-server')
-keys_collection = db.transitKeys
+import os
 
 class SimpleSigner:
     def __init__(self, identity):
@@ -31,23 +13,17 @@ class SimpleSigner:
         self.key = RSA.generate(2048)
         self.public_key = self.key.publickey()
 
-    def save_keys_to_db(self):
-        keys_collection.update_one(
-            {'identity': self.identity},
-            {'$set': {
-                'private_key': self.key.export_key().decode('utf-8'),
-                'public_key': self.public_key.export_key().decode('utf-8')
-            }},
-            upsert=True
-        )
+    def save_keys(self, private_key_file, public_key_file):
+        with open(private_key_file, 'wb') as f:
+            f.write(self.key.export_key())
+        with open(public_key_file, 'wb') as f:
+            f.write(self.public_key.export_key())
 
-    def load_keys_from_db(self):
-        record = keys_collection.find_one({'identity': self.identity})
-        if record:
-            self.key = RSA.import_key(record['private_key'].encode('utf-8'))
-            self.public_key = RSA.import_key(record['public_key'].encode('utf-8'))
-        else:
-            raise ValueError(f"Keys for identity '{self.identity}' not found in database.")
+    def load_keys(self, private_key_file, public_key_file):
+        with open(private_key_file, 'rb') as f:
+            self.key = RSA.import_key(f.read())
+        with open(public_key_file, 'rb') as f:
+            self.public_key = RSA.import_key(f.read())
 
     def sign(self, data):
         message = self.identity.encode() + data
@@ -81,57 +57,37 @@ class SimpleSigner:
                 return False
         return True
 
-@verifier_routes.route('/setup-identity', methods=['POST'])
-def setup_identity():
-    try:
-        identity = request.json.get('identity')
-        if not identity:
-            return jsonify({"error": "Identity is required"}), 400
+def main():
+    signers = []
+    public_keys = []
+    signatures = []
 
+    num_signers = int(input("Enter the number of signers: "))
+
+    for i in range(num_signers):
+        identity = input(f"Enter identity for signer {i+1}: ")
         signer = SimpleSigner(identity)
         signer.generate_keys()
-        signer.save_keys_to_db()
-        return jsonify({"message": f"Keys for identity '{identity}' have been generated and stored in the database."}), 200
-    except Exception as e:
-        logger.exception("Exception occurred in setup_identity: %s", e)
-        return jsonify({"error": "Internal Server Error"}), 500
+        signer.save_keys(f'private_key{i+1}.pem', f'public_key{i+1}.pem')
+        signer.load_keys(f'private_key{i+1}.pem', f'public_key{i+1}.pem')
+        signers.append(signer)
+        public_keys.append(signer.public_key)
 
-@verifier_routes.route('/verify-signatures', methods=['POST'])
-def verify_signatures():
-    try:
-        signers = []
-        public_keys = []
-        signatures = []
+    data = input("Enter the data to be signed: ").encode()
 
-        num_signers = request.json.get('num_signers')
-        identities = request.json.get('identities')
-        
-        if not num_signers or not identities or len(identities) != num_signers:
-            return jsonify({"error": "Invalid number of signers or identities"}), 400
+    for signer in signers:
+        signature = signer.sign(data)
+        signatures.append(signature)
 
-        for identity in identities:
-            signer = SimpleSigner(identity)
-            try:
-                signer.load_keys_from_db()
-            except ValueError as e:
-                return jsonify({"error": str(e)}), 400
-            signers.append(signer)
-            public_keys.append(signer.public_key)
+    aggregate_signature = SimpleSigner.aggregate_signatures(signatures)
 
-        data = b"weather_data"  # Example data, should be fetched weather data
+    identities = [signer.identity for signer in signers]
+    is_valid = SimpleSigner.verify_aggregate(identities, data, aggregate_signature, public_keys)
+    
+    if is_valid:
+        print("Aggregate signature valid:", is_valid)
+    else:
+        print("Aggregate signature valid:", is_valid)
 
-        for signer in signers:
-            signature = signer.sign(data)
-            signatures.append(signature)
-
-        aggregate_signature = SimpleSigner.aggregate_signatures(signatures)
-
-        is_valid = SimpleSigner.verify_aggregate(identities, data, aggregate_signature, public_keys)
-        
-        if is_valid:
-            return jsonify({"message": "Aggregate signature valid"}), 200
-        else:
-            return jsonify({"error": "Aggregate signature invalid"}), 400
-    except Exception as e:
-        logger.exception("Exception occurred in verify_signatures: %s", e)
-        return jsonify({"error": "Internal Server Error"}), 500
+if __name__ == "__main__":
+    main()
