@@ -25,12 +25,6 @@ WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 MONGO_URI = os.environ.get("AZURE_COSMOS_CONNECTIONSTRING")
 FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
-# MongoDB setup
-client = MongoClient(MONGO_URI)
-db = client.get_database('ibas-server')
-collection = db.weather_records
-keys_collection = db.transitKeys
-
 # Function to test the MongoDB connection
 @app.before_first_request
 def test_db_connection():
@@ -39,6 +33,38 @@ def test_db_connection():
         logger.info("MongoDB connection established successfully.")
     except Exception as e:
         logger.error(f"Failed to connect to MongoDB: {e}")
+
+# MongoDB setup
+client = MongoClient(MONGO_URI)
+db = client.get_database('ibas-server')
+weatherRecords = db.weather_records
+keysCollection = db.transitKeys
+customerDB = client.get_database('Customer1')
+
+@app.route('/data', methods=['GET'])
+def get_data():
+    username = request.args.get('username')
+    apikey = request.args.get('apikey')
+    
+    if not username or not apikey:
+        return jsonify({"error": "Username and API key are required"}), 400
+    
+    # Fetch collection name based on username
+    collection_name = username
+    
+    # Check if collection exists (optional step)
+    if collection_name not in customerDB.list_collection_names():
+        return jsonify({"error": "Collection not found"}), 404
+    
+    # Fetch the data from the corresponding collection
+    collection = customerDB[collection_name]
+    data = collection.find_one({"domain.openweathermap__dot__org.key": apikey})
+    
+    if not data:
+        return jsonify({"error": "API key not found or no data available"}), 404
+    
+    # Return the data
+    return jsonify(data)
 
 def fetch_and_store_weather():
     """
@@ -74,13 +100,13 @@ def fetch_and_store_weather():
     logger.info(f"Record to be inserted: {record}")
 
     try:
-        result_record = collection.insert_one(record)
+        result_record = weatherRecords.insert_one(record)
         logger.info(f"Inserted record ID: {result_record.inserted_id}")
     except Exception as e:
         logger.error(f"Error inserting record: {e}")
 
     try:
-        result_key = keys_collection.insert_one({"key": key})
+        result_key = keysCollection.insert_one({"key": key})
         logger.info(f"Inserted key ID: {result_key.inserted_id}")
     except Exception as e:
         logger.error(f"Error inserting key: {e}")
@@ -123,8 +149,8 @@ def get_weather():
 
 @app.route('/get-weather', methods=['GET'])
 def get_stored_weather():
-    record = collection.find_one()
-    key_record = keys_collection.find_one()
+    record = weatherRecords.find_one()
+    key_record = keysCollection.find_one()
 
     if not record or not key_record:
         return jsonify({"error": "No weather data available"}), 404
@@ -142,8 +168,8 @@ def get_stored_weather():
 
 # @app.route('/feels-like', methods=['GET'])
 # def get_feels_like():
-#     record = collection.find_one()
-#     key_record = keys_collection.find_one()
+#     record = weatherRecords.find_one()
+#     key_record = keysCollection.find_one()
 
 #     if not record or not key_record:
 #         return jsonify({"error": "No weather data available"}), 404
