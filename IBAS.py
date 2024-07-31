@@ -179,7 +179,7 @@ signal.signal(signal.SIGINT, handle_shutdown_signal)
 
 # Scheduler setup
 scheduler = BackgroundScheduler()
-scheduler.add_job(fetch_and_store_weather, 'interval', hours=1)
+scheduler.add_job(fetch_and_store_weather, 'interval', hours=48)
 scheduler.start()
 
 if __name__ == '__main__':
