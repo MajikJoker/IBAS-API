@@ -62,8 +62,8 @@ def setup():
     if not document:
         return jsonify({"error": "No data available"}), 404
     
-    # Get all domains
-    domains = document.get('domain', {})
+    # Get all domain names
+    domains = list(document.get('domain', {}).keys())
     
     return jsonify({"domains": domains}), 200
 
