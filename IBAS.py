@@ -149,41 +149,49 @@ def fetch_and_store_weather():
     encrypted_data = encrypt_data(weather_data, key)
     logger.info(f"Encrypted data: {encrypted_data}")
 
-    # Get all domains and replace "__dot__" with "."
-    username = "WeatherNodeInitiative"  # Replace this with the actual username
-    collection = customerDB[username]
-    document = collection.find_one()
-    
-    if not document:
-        logger.error(f"No document found for username {username}")
-        return
-
-    domains = [domain.replace('__dot__', '.') for domain in document.get('domain', {}).keys()]
-    
-    signatures = []
-    for domain in domains:
-        pem_collection_name = f"{domain}_PEM"
-        pem_collection = customerDB[pem_collection_name]
-        pem_document = pem_collection.find_one({"domain": domain})
+    # Get all usernames dynamically
+    usernames = [username for username in customerDB.list_collection_names() if not username.endswith('_PEM')]
+    for username in usernames:
+        # Fetch domains for the current username
+        collection = customerDB[username]
+        document = collection.find_one()
         
-        private_key = RSA.import_key(pem_document["private_key"])
-        signer = SimpleSigner(domain)
-        signer.key = private_key
-        signer.public_key = signer.key.publickey()
-        signature = signer.sign(encrypted_data)
-        signatures.append(signature)
-    
-    aggregate_signature = SimpleSigner.aggregate_signatures(signatures)
-    
+        if not document:
+            logger.error(f"No document found for username {username}")
+            continue
+
+        domains = [domain.replace('__dot__', '.') for domain in document.get('domain', {}).keys()]
+        
+        signatures = []
+        for domain in domains:
+            pem_collection_name = f"{domain}_PEM"
+            pem_collection = customerDB[pem_collection_name]
+            pem_document = pem_collection.find_one({"domain": domain})
+            
+            private_key = RSA.import_key(pem_document["private_key"])
+            signer = SimpleSigner(domain)
+            signer.key = private_key
+            signer.public_key = signer.key.publickey()
+            signature = signer.sign(encrypted_data)
+            signatures.append(signature)
+        
+        aggregate_signature = SimpleSigner.aggregate_signatures(signatures)
+        
+        # Store the aggregate signature in the user's collection
+        try:
+            collection.update_one({}, {"$set": {"agg_sig": aggregate_signature}})
+            logger.info(f"Aggregate signature stored in {username} collection")
+        except Exception as e:
+            logger.error(f"Error updating {username} collection with aggregate signature: {e}")
+
     # Compute hash of the encrypted data
     data_hash = get_hashed_data(encrypted_data)
     logger.info(f"Data hash: {data_hash}")
 
-    # Store encrypted data, hash, and aggregate signature in MongoDB
+    # Store encrypted data and hash in weather_records collection
     record = {
         "data": encrypted_data,
-        "hash": data_hash,
-        "agg_sig": aggregate_signature
+        "hash": data_hash
     }
     logger.info(f"Record to be inserted: {record}")
 
