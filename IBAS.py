@@ -9,9 +9,6 @@ from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, che
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
-from Crypto.PublicKey import RSA
-from Crypto.Signature import pkcs1_15
-from Crypto.Hash import SHA256
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,47 +41,6 @@ weatherRecords = db.weather_records
 keysCollection = db.transitKeys
 customerDB = client.get_database('Customers')
 
-class SimpleSigner:
-    def __init__(self, identity):
-        self.identity = identity  # Store the identity of the signer
-        self.key = None  # Placeholder for the RSA private key
-        self.public_key = None  # Placeholder for the RSA public key
-
-    def generate_keys(self):
-        self.key = RSA.generate(2048)  # Generate a 2048-bit RSA key pair
-        self.public_key = self.key.publickey()  # Extract the public key
-
-    def save_keys(self, private_key_file, public_key_file):
-        with open(private_key_file, 'wb') as f:
-            f.write(self.key.export_key())  # Save the private key to a file
-        with open(public_key_file, 'wb') as f:
-            f.write(self.public_key.export_key())  # Save the public key to a file
-
-    def load_keys(self, private_key_file, public_key_file):
-        with open(private_key_file, 'rb') as f:
-            self.key = RSA.import_key(f.read())  # Load the private key from a file
-        with open(public_key_file, 'rb') as f:
-            self.public_key = RSA.import_key(f.read())  # Load the public key from a file
-
-    def sign(self, data):
-        message = self.identity + data  # Concatenate the identity with the string data
-        h = SHA256.new(message.encode())  # Create a SHA-256 hash of the message
-        signature = pkcs1_15.new(self.key).sign(h)  # Sign the hash with the private key
-        return signature  # Return the signature
-
-    def verify(self, identity, data, signature):
-        message = identity + data  # Concatenate the identity with the data
-        h = SHA256.new(message.encode())  # Create a SHA-256 hash of the message
-        try:
-            pkcs1_15.new(self.public_key).verify(h, signature)  # Verify the signature with the public key
-            return True  # Return True if verification is successful
-        except (ValueError, TypeError):
-            return False  # Return False if verification fails
-
-    @staticmethod
-    def aggregate_signatures(signatures):
-        return b''.join(signatures)  # Concatenate all signatures into one aggregate signature
-
 @app.route('/setup', methods=['GET'])
 def setup():
     username = request.args.get('username')
@@ -106,30 +62,16 @@ def setup():
     if not document:
         return jsonify({"error": "No data available"}), 404
     
+    # Get all domain names
+    domains = list(document.get('domain', {}).keys())
     # Get all domain names and replace "__dot__" with "."
     domains = [domain.replace('__dot__', '.') for domain in document.get('domain', {}).keys()]
-    
-    # Generate keys for each domain and store them in a new collection named after the domain
-    for domain in domains:
-        signer = SimpleSigner(domain)
-        signer.generate_keys()
-        
-        pem_collection_name = f"{domain}_PEM"
-        pem_collection = customerDB[pem_collection_name]
-        
-        pem_data = {
-            "domain": domain,
-            "private_key": signer.key.export_key().decode(),
-            "public_key": signer.public_key.export_key().decode()
-        }
-        
-        pem_collection.insert_one(pem_data)
     
     return jsonify({"domains": domains}), 200
 
 def fetch_and_store_weather():
     """
-    Fetches weather data from the weather API, encrypts it, signs it, and stores it in MongoDB.
+    Fetches weather data from the weather API, encrypts it, and stores it in MongoDB.
     """
     if not FETCH_WEATHER:
         logger.warning("FETCH_WEATHER is set to False")
@@ -149,50 +91,11 @@ def fetch_and_store_weather():
     encrypted_data = encrypt_data(weather_data, key)
     logger.info(f"Encrypted data: {encrypted_data}")
 
-    # Ensure encrypted_data is a string
-    if isinstance(encrypted_data, bytes):
-        encrypted_data = encrypted_data.decode()
-
-    # Get all usernames dynamically
-    usernames = [username for username in customerDB.list_collection_names() if not username.endswith('_PEM')]
-    for username in usernames:
-        # Fetch domains for the current username
-        collection = customerDB[username]
-        document = collection.find_one()
-        
-        if not document:
-            logger.error(f"No document found for username {username}")
-            continue
-
-        domains = [domain.replace('__dot__', '.') for domain in document.get('domain', {}).keys()]
-        
-        signatures = []
-        for domain in domains:
-            pem_collection_name = f"{domain}_PEM"
-            pem_collection = customerDB[pem_collection_name]
-            pem_document = pem_collection.find_one({"domain": domain})
-            
-            private_key = RSA.import_key(pem_document["private_key"])
-            signer = SimpleSigner(domain)
-            signer.key = private_key
-            signer.public_key = signer.key.publickey()
-            signature = signer.sign(encrypted_data)
-            signatures.append(signature)
-        
-        aggregate_signature = SimpleSigner.aggregate_signatures(signatures)
-        
-        # Store the aggregate signature in the user's collection
-        try:
-            collection.update_one({}, {"$set": {"agg_sig": aggregate_signature}})
-            logger.info(f"Aggregate signature stored in {username} collection")
-        except Exception as e:
-            logger.error(f"Error updating {username} collection with aggregate signature: {e}")
-
     # Compute hash of the encrypted data
-    data_hash = get_hashed_data(encrypted_data.encode())
+    data_hash = get_hashed_data(encrypted_data)
     logger.info(f"Data hash: {data_hash}")
 
-    # Store encrypted data and hash in weather_records collection
+    # Store encrypted data and hash in MongoDB
     record = {
         "data": encrypted_data,
         "hash": data_hash
@@ -259,10 +162,10 @@ def get_stored_weather():
     stored_hash = record["hash"]
     key = key_record["key"]
 
-    if not check_hash(encrypted_data.encode(), stored_hash):
+    if not check_hash(encrypted_data, stored_hash):
         return jsonify({"error": "Data integrity compromised"}), 500
 
-    weather_data = decrypt_data(encrypted_data.encode(), key)
+    weather_data = decrypt_data(encrypted_data, key)
 
     return jsonify(weather_data), 200
 
@@ -283,13 +186,3 @@ if __name__ == '__main__':
     logger.info("Starting Flask application")
     fetch_and_store_weather()  # Initial fetch
     app.run(debug=True, host='0.0.0.0', port=8000)
-
-# Test route to manually trigger the fetch and store weather function
-@app.route('/test-fetch-and-store-weather', methods=['GET'])
-def test_fetch_and_store_weather():
-    try:
-        fetch_and_store_weather()
-        return jsonify({"message": "Test fetch and store weather executed successfully"}), 200
-    except Exception as e:
-        logger.exception("Exception occurred during test")
-        return jsonify({"error": "Internal Server Error", "message": str(e)}), 500
