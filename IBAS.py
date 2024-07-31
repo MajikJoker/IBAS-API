@@ -67,14 +67,14 @@ class SimpleSigner:
             self.public_key = RSA.import_key(f.read())  # Load the public key from a file
 
     def sign(self, data):
-        message = self.identity + data.decode()  # Concatenate the identity with the string data
+        message = self.identity + data  # Concatenate the identity with the string data
         h = SHA256.new(message.encode())  # Create a SHA-256 hash of the message
         signature = pkcs1_15.new(self.key).sign(h)  # Sign the hash with the private key
         return signature  # Return the signature
 
     def verify(self, identity, data, signature):
-        message = identity.encode() + data  # Concatenate the identity with the data
-        h = SHA256.new(message)  # Create a SHA-256 hash of the message
+        message = identity + data  # Concatenate the identity with the data
+        h = SHA256.new(message.encode())  # Create a SHA-256 hash of the message
         try:
             pkcs1_15.new(self.public_key).verify(h, signature)  # Verify the signature with the public key
             return True  # Return True if verification is successful
@@ -149,7 +149,7 @@ def fetch_and_store_weather():
     encrypted_data = encrypt_data(weather_data, key)
     logger.info(f"Encrypted data: {encrypted_data}")
 
-    # Convert encrypted_data to a string if it's in bytes
+    # Ensure encrypted_data is a string
     if isinstance(encrypted_data, bytes):
         encrypted_data = encrypted_data.decode()
 
@@ -293,4 +293,3 @@ def test_fetch_and_store_weather():
     except Exception as e:
         logger.exception("Exception occurred during test")
         return jsonify({"error": "Internal Server Error", "message": str(e)}), 500
-
