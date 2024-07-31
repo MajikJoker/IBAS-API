@@ -5,7 +5,7 @@ from pymongo import MongoClient
 import os
 from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, check_hash
 from datetime import datetime, timezone
-from verifier import SimpleSigner
+from Verifier import SimpleSigner
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -78,13 +78,13 @@ def fetch_and_store_weather():
         data_hash = get_hashed_data(encrypted_data)
         logger.info(f"Data hash: {data_hash}")
 
-        # Store encrypted data and hash in MongoDB
-        record = {
-            "name": "OpenWeather",
-            "data": encrypted_data,
-            "hash": data_hash
-        }
-        logger.info(f"Record to be inserted: {record}")
+    # Store encrypted data and hash in MongoDB
+    record = {
+        "name": "OpenWeather",
+        "data": encrypted_data,
+        "hash": data_hash
+    }
+    logger.info(f"Record to be inserted: {record}")
 
         try:
             result_record = collection.insert_one(record)
