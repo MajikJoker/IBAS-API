@@ -5,7 +5,7 @@ from pymongo import MongoClient
 import os
 from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, check_hash
 from datetime import datetime, timezone
-from verifier import SimpleSigner #used to have caps V
+# from verifier import SimpleSigner #used to have caps V
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
