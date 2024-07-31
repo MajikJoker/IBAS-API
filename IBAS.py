@@ -67,18 +67,6 @@ def setup():
     
     return jsonify({"domains": domains}), 200
 
-    
-    # Convert ObjectId to string
-    document['_id'] = str(document['_id'])
-    
-    # Return the matched domain within the document
-    response_data = {
-        "_id": document['_id'],
-        "matched_domain": matched_domain
-    }
-    
-    return jsonify(response_data)
-
 def fetch_and_store_weather():
     """
     Fetches weather data from the weather API, encrypts it, and stores it in MongoDB.
