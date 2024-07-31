@@ -151,7 +151,11 @@ def fetch_and_store_weather():
 
     # Get all usernames dynamically
     usernames = [username for username in customerDB.list_collection_names() if not username.endswith('_PEM')]
+    print('usernames')
+    print(usernames)
     for username in usernames:
+        print('username')
+        print(username)
         # Fetch domains for the current username
         collection = customerDB[username]
         document = collection.find_one()
@@ -179,6 +183,8 @@ def fetch_and_store_weather():
         
         # Store the aggregate signature in the user's collection
         try:
+            print('code is here LOL')
+            print(collection)
             collection.update_one({}, {"$set": {"agg_sig": aggregate_signature}})
             logger.info(f"Aggregate signature stored in {username} collection")
         except Exception as e:
