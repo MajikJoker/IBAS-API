@@ -67,8 +67,8 @@ class SimpleSigner:
             self.public_key = RSA.import_key(f.read())  # Load the public key from a file
 
     def sign(self, data):
-        message = self.identity.encode() + data  # Concatenate the identity with the data
-        h = SHA256.new(message)  # Create a SHA-256 hash of the message
+        message = self.identity + data.decode()  # Concatenate the identity with the string data
+        h = SHA256.new(message.encode())  # Create a SHA-256 hash of the message
         signature = pkcs1_15.new(self.key).sign(h)  # Sign the hash with the private key
         return signature  # Return the signature
 
@@ -149,13 +149,13 @@ def fetch_and_store_weather():
     encrypted_data = encrypt_data(weather_data, key)
     logger.info(f"Encrypted data: {encrypted_data}")
 
+    # Convert encrypted_data to a string if it's in bytes
+    if isinstance(encrypted_data, bytes):
+        encrypted_data = encrypted_data.decode()
+
     # Get all usernames dynamically
     usernames = [username for username in customerDB.list_collection_names() if not username.endswith('_PEM')]
-    print('usernames')
-    print(usernames)
     for username in usernames:
-        print('username')
-        print(username)
         # Fetch domains for the current username
         collection = customerDB[username]
         document = collection.find_one()
@@ -183,15 +183,13 @@ def fetch_and_store_weather():
         
         # Store the aggregate signature in the user's collection
         try:
-            print('code is here LOL')
-            print(collection)
             collection.update_one({}, {"$set": {"agg_sig": aggregate_signature}})
             logger.info(f"Aggregate signature stored in {username} collection")
         except Exception as e:
             logger.error(f"Error updating {username} collection with aggregate signature: {e}")
 
     # Compute hash of the encrypted data
-    data_hash = get_hashed_data(encrypted_data)
+    data_hash = get_hashed_data(encrypted_data.encode())
     logger.info(f"Data hash: {data_hash}")
 
     # Store encrypted data and hash in weather_records collection
@@ -261,10 +259,10 @@ def get_stored_weather():
     stored_hash = record["hash"]
     key = key_record["key"]
 
-    if not check_hash(encrypted_data, stored_hash):
+    if not check_hash(encrypted_data.encode(), stored_hash):
         return jsonify({"error": "Data integrity compromised"}), 500
 
-    weather_data = decrypt_data(encrypted_data, key)
+    weather_data = decrypt_data(encrypted_data.encode(), key)
 
     return jsonify(weather_data), 200
 
@@ -285,3 +283,14 @@ if __name__ == '__main__':
     logger.info("Starting Flask application")
     fetch_and_store_weather()  # Initial fetch
     app.run(debug=True, host='0.0.0.0', port=8000)
+
+# Test route to manually trigger the fetch and store weather function
+@app.route('/test-fetch-and-store-weather', methods=['GET'])
+def test_fetch_and_store_weather():
+    try:
+        fetch_and_store_weather()
+        return jsonify({"message": "Test fetch and store weather executed successfully"}), 200
+    except Exception as e:
+        logger.exception("Exception occurred during test")
+        return jsonify({"error": "Internal Server Error", "message": str(e)}), 500
+
