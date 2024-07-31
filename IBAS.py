@@ -63,6 +63,9 @@ def get_data():
     if not data:
         return jsonify({"error": "API key not found or no data available"}), 404
     
+    # Convert ObjectId to string
+    data['_id'] = str(data['_id'])
+    
     # Return the data
     return jsonify(data)
 
