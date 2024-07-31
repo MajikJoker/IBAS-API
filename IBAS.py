@@ -39,15 +39,14 @@ client = MongoClient(MONGO_URI)
 db = client.get_database('ibas-server')
 weatherRecords = db.weather_records
 keysCollection = db.transitKeys
-customerDB = client.get_database('Customer1')
+customerDB = client.get_database('Customers')
 
-@app.route('/data', methods=['GET'])
-def get_data():
+@app.route('/setup', methods=['GET'])
+def setup():
     username = request.args.get('username')
-    apikey = request.args.get('apikey')
     
-    if not username or not apikey:
-        return jsonify({"error": "Username and API key are required"}), 400
+    if not username:
+        return jsonify({"error": "Username is required"}), 400
     
     # Fetch collection name based on username
     collection_name = username
@@ -63,15 +62,11 @@ def get_data():
     if not document:
         return jsonify({"error": "No data available"}), 404
     
-    # Find the matching domain by API key
-    matched_domain = None
-    for domain, details in document['domain'].items():
-        if details['key'] == apikey:
-            matched_domain = {domain: details}
-            break
+    # Get all domains
+    domains = document.get('domain', {})
     
-    if not matched_domain:
-        return jsonify({"error": "API key not found"}), 404
+    return jsonify({"domains": domains}), 200
+
     
     # Convert ObjectId to string
     document['_id'] = str(document['_id'])
