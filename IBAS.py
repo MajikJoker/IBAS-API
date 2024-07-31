@@ -58,16 +58,31 @@ def get_data():
     
     # Fetch the data from the corresponding collection
     collection = customerDB[collection_name]
-    data = collection.find_one({"domain.openweathermap__dot__org.key": apikey})
+    document = collection.find_one()
     
-    if not data:
-        return jsonify({"error": "API key not found or no data available"}), 404
+    if not document:
+        return jsonify({"error": "No data available"}), 404
+    
+    # Find the matching domain by API key
+    matched_domain = None
+    for domain, details in document['domain'].items():
+        if details['key'] == apikey:
+            matched_domain = {domain: details}
+            break
+    
+    if not matched_domain:
+        return jsonify({"error": "API key not found"}), 404
     
     # Convert ObjectId to string
-    data['_id'] = str(data['_id'])
+    document['_id'] = str(document['_id'])
     
-    # Return the data
-    return jsonify(data)
+    # Return the matched domain within the document
+    response_data = {
+        "_id": document['_id'],
+        "matched_domain": matched_domain
+    }
+    
+    return jsonify(response_data)
 
 def fetch_and_store_weather():
     """
