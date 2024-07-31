@@ -13,8 +13,8 @@ load_dotenv()
 
 try:
     # Import routes from different modules
-    from IBAS import ibas_routes
-    from Verifier import verifier_routes
+    from ibas import ibas_routes
+    from verifier import verifier_routes
 
     # Register Blueprints
     app.register_blueprint(ibas_routes)
