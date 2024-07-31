@@ -23,7 +23,7 @@ load_dotenv()
 WEATHER_API_URL = os.environ.get("WEATHER_API_URL")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 MONGO_URI = os.environ.get("AZURE_COSMOS_CONNECTIONSTRING")
-FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
+# FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
 # Function to test the MongoDB connection
 @app.before_first_request
@@ -65,11 +65,27 @@ def setup():
     # Get all domain names and replace "__dot__" with "."
     domains = [domain.replace('__dot__', '.') for domain in document.get('domain', {}).keys()]
     
+    # Generate keys for each domain and store them in a new collection named after the domain
+    for domain in domains:
+        signer = SimpleSigner(domain)
+        signer.generate_keys()
+        
+        pem_collection_name = f"{domain}_PEM"
+        pem_collection = customerDB[pem_collection_name]
+        
+        pem_data = {
+            "domain": domain,
+            "private_key": signer.key.export_key().decode(),
+            "public_key": signer.public_key.export_key().decode()
+        }
+        
+        pem_collection.insert_one(pem_data)
+    
     return jsonify({"domains": domains}), 200
 
 def fetch_and_store_weather():
     """
-    Fetches weather data from the weather API, encrypts it, and stores it in MongoDB.
+    Fetches weather data from the weather API, encrypts it, signs it, and stores it in MongoDB.
     """
     if not FETCH_WEATHER:
         logger.warning("FETCH_WEATHER is set to False")
@@ -89,14 +105,41 @@ def fetch_and_store_weather():
     encrypted_data = encrypt_data(weather_data, key)
     logger.info(f"Encrypted data: {encrypted_data}")
 
+    # Get all domains and replace "__dot__" with "."
+    username = "WeatherNodeInitiative"  # Replace this with the actual username
+    collection = customerDB[username]
+    document = collection.find_one()
+    
+    if not document:
+        logger.error(f"No document found for username {username}")
+        return
+
+    domains = [domain.replace('__dot__', '.') for domain in document.get('domain', {}).keys()]
+    
+    signatures = []
+    for domain in domains:
+        pem_collection_name = f"{domain}_PEM"
+        pem_collection = customerDB[pem_collection_name]
+        pem_document = pem_collection.find_one({"domain": domain})
+        
+        private_key = RSA.import_key(pem_document["private_key"])
+        signer = SimpleSigner(domain)
+        signer.key = private_key
+        signer.public_key = signer.key.publickey()
+        signature = signer.sign(encrypted_data)
+        signatures.append(signature)
+    
+    aggregate_signature = SimpleSigner.aggregate_signatures(signatures)
+    
     # Compute hash of the encrypted data
     data_hash = get_hashed_data(encrypted_data)
     logger.info(f"Data hash: {data_hash}")
 
-    # Store encrypted data and hash in MongoDB
+    # Store encrypted data, hash, and aggregate signature in MongoDB
     record = {
         "data": encrypted_data,
-        "hash": data_hash
+        "hash": data_hash,
+        "agg_sig": aggregate_signature
     }
     logger.info(f"Record to be inserted: {record}")
 
