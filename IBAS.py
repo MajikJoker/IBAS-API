@@ -67,6 +67,19 @@ class SimpleSigner:
     def aggregate_signatures(signatures):
         return b''.join(signatures)
 
+    @staticmethod
+    def verify_aggregate(identities, data, aggregate_signature, public_keys):
+        signature_len = len(aggregate_signature) // len(public_keys)
+        for i, pub_key in enumerate(public_keys):
+            message = identities[i].encode() + data
+            message_hash = SHA256.new(message)
+            signature_part = aggregate_signature[i * signature_len:(i + 1) * signature_len]
+            try:
+                pkcs1_15.new(pub_key).verify(message_hash, signature_part)
+            except (ValueError, TypeError):
+                return False
+        return True
+
 @app.route('/setup', methods=['GET'])
 def setup():
     username = request.args.get('username')
@@ -130,6 +143,7 @@ def fetch_and_store_weather():
     domains = domain_docs.get('domain', {}).keys() # Getting the 3 domains
     identities = []
     signatures = []
+    public_keys = []
 
     for domain in domains:
         signer = SimpleSigner(domain)
@@ -142,6 +156,7 @@ def fetch_and_store_weather():
         signature = signer.sign(encrypted_data.encode())
         signatures.append(signature)
         identities.append(domain)
+        public_keys.append(signer.public_key)
 
     agg_sig = SimpleSigner.aggregate_signatures(signatures)
 
@@ -164,6 +179,10 @@ def fetch_and_store_weather():
         logger.info(f"Inserted key ID: {result_key.inserted_id}")
     except Exception as e:
         logger.error(f"Error inserting key: {e}")
+
+    # Verify the aggregate signature
+    is_valid = SimpleSigner.verify_aggregate(identities, encrypted_data.encode(), agg_sig, public_keys)
+    logger.info(f"Aggregate signature valid: {is_valid}")
 
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
