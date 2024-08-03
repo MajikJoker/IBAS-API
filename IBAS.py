@@ -6,6 +6,9 @@ import os
 import signal
 import sys
 from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, check_hash
+from Crypto.PublicKey import RSA
+from Crypto.Hash import SHA256
+from Crypto.Signature import pkcs1_15
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
@@ -25,6 +28,13 @@ WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 MONGO_URI = os.environ.get("AZURE_COSMOS_CONNECTIONSTRING")
 FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
+# MongoDB setup
+client = MongoClient(MONGO_URI)
+db = client.get_database('ibas-server')
+weatherRecords = db.weather_records
+keysCollection = db.transitKeys
+customerDB = client.get_database('Customers')
+
 # Function to test the MongoDB connection
 @app.before_first_request
 def test_db_connection():
@@ -34,12 +44,50 @@ def test_db_connection():
     except Exception as e:
         logger.error(f"Failed to connect to MongoDB: {e}")
 
-# MongoDB setup
-client = MongoClient(MONGO_URI)
-db = client.get_database('ibas-server')
-weatherRecords = db.weather_records
-keysCollection = db.transitKeys
-customerDB = client.get_database('Customers')
+class SimpleSigner:
+    def __init__(self, identity):
+        self.identity = identity
+        self.key = None
+        self.public_key = None
+
+    def generate_keys(self):
+        self.key = RSA.generate(2048)
+        self.public_key = self.key.publickey()
+
+    def export_keys(self):
+        return self.key.export_key().decode(), self.public_key.export_key().decode()
+
+    def sign(self, data):
+        message = self.identity.encode() + data
+        h = SHA256.new(message)
+        signature = pkcs1_15.new(self.key).sign(h)
+        return signature
+
+    def verify(self, identity, data, signature):
+        message = identity.encode() + data
+        h = SHA256.new(message)
+        try:
+            pkcs1_15.new(self.public_key).verify(h, signature)
+            return True
+        except (ValueError, TypeError):
+            return False
+
+    @staticmethod
+    def aggregate_signatures(signatures):
+        return b''.join(signatures)
+
+    @staticmethod
+    def verify_aggregate(identities, data, aggregate_signature, public_keys):
+        signature_len = len(aggregate_signature) // len(public_keys)
+        for i, pub_key in enumerate(public_keys):
+            message = identities[i].encode() + data
+            message_hash = SHA256.new(message)
+            signature_part = aggregate_signature[i * signature_len:(i + 1) * signature_len]
+            try:
+                pkcs1_15.new(pub_key).verify(message_hash, signature_part)
+            except (ValueError, TypeError):
+                return False
+        return True
 
 @app.route('/setup', methods=['GET'])
 def setup():
@@ -48,26 +96,30 @@ def setup():
     if not username:
         return jsonify({"error": "Username is required"}), 400
     
-    # Fetch collection name based on username
     collection_name = username
     
-    # Check if collection exists (optional step)
     if collection_name not in customerDB.list_collection_names():
         return jsonify({"error": "Collection not found"}), 404
     
-    # Fetch the data from the corresponding collection
     collection = customerDB[collection_name]
     document = collection.find_one()
     
     if not document:
         return jsonify({"error": "No data available"}), 404
     
-    # Get all domain names
-    domains = list(document.get('domain', {}).keys())
-    # Get all domain names and replace "__dot__" with "."
     domains = [domain.replace('__dot__', '.') for domain in document.get('domain', {}).keys()]
     
-    return jsonify({"domains": domains}), 200
+    keys = {}
+    for domain in domains:
+        signer = SimpleSigner(domain)
+        signer.generate_keys()
+        pub_key, pri_key = signer.export_keys()
+        keys[f'pub_{domain.replace(".", "_")}_PEM'] = pub_key
+        keys[f'pri_{domain.replace(".", "_")}_PEM'] = pri_key
+    
+    collection.update_one({'_id': document['_id']}, {'$set': keys})
+    
+    return jsonify({"domains": domains, "keys": keys}), 200
 
 def fetch_and_store_weather():
     """
