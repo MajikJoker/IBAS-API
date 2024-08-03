@@ -132,8 +132,8 @@ def fetch_and_store_weather():
     signatures = []
 
     for domain in domains:
-        domain_name = domain.replace('__dot__', '.') # The 3 domans, converting dots
-        signer = SimpleSigner(domain_name)
+        #domain_name = domain.replace('__dot__', '.') # The 3 domans, converting dots
+        signer = SimpleSigner(domain)
         pri_key = domain_docs.get(f'pri_{domain}_PEM')
         pub_key = domain_docs.get(f'pub_{domain}_PEM')
         
@@ -142,7 +142,7 @@ def fetch_and_store_weather():
 
         signature = signer.sign(encrypted_data.encode())
         signatures.append(signature)
-        identities.append(domain_name)
+        identities.append(domain)
 
     agg_sig = SimpleSigner.aggregate_signatures(signatures)
 
