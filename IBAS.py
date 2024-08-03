@@ -144,45 +144,52 @@ def fetch_and_store_weather():
     identities = []
     signatures = []
     public_keys = []
-
-    for domain in domains:
-        signer = SimpleSigner(domain)
-        pri_key = domain_docs.get(f'pri_{domain}_PEM')
-        pub_key = domain_docs.get(f'pub_{domain}_PEM')
-        
-        signer.key = RSA.import_key(pri_key.encode())
-        signer.public_key = RSA.import_key(pub_key.encode())
-
-        signature = signer.sign(encrypted_data.encode())
-        signatures.append(signature)
-        identities.append(domain)
-        public_keys.append(signer.public_key)
-
-    agg_sig = SimpleSigner.aggregate_signatures(signatures)
-
-    # Store encrypted data, hash, and aggregate signature in MongoDB
-    record = {
-        "data": encrypted_data,
-        "hash": data_hash,
-        "agg_sig": agg_sig.hex()  # Store as hex string
-    }
-    logger.info(f"Record to be inserted: {record}")
+    is_valid = False  # Default value for is_valid
 
     try:
-        result_record = weatherRecords.insert_one(record)
-        logger.info(f"Inserted record ID: {result_record.inserted_id}")
-    except Exception as e:
-        logger.error(f"Error inserting record: {e}")
+        for domain in domains:
+            signer = SimpleSigner(domain)
+            pri_key = domain_docs.get(f'pri_{domain}_PEM')
+            pub_key = domain_docs.get(f'pub_{domain}_PEM')
+            
+            signer.key = RSA.import_key(pri_key.encode())
+            signer.public_key = RSA.import_key(pub_key.encode())
 
-    try:
-        result_key = keysCollection.insert_one({"key": key})
-        logger.info(f"Inserted key ID: {result_key.inserted_id}")
-    except Exception as e:
-        logger.error(f"Error inserting key: {e}")
+            signature = signer.sign(encrypted_data.encode())
+            signatures.append(signature)
+            identities.append(domain)
+            public_keys.append(signer.public_key)
 
-    # Verify the aggregate signature
-    is_valid = SimpleSigner.verify_aggregate(identities, encrypted_data.encode(), agg_sig, public_keys)
-    logger.info(f"Aggregate signature valid: {is_valid}")
+        agg_sig = SimpleSigner.aggregate_signatures(signatures)
+
+        # Store encrypted data, hash, and aggregate signature in MongoDB
+        record = {
+            "data": encrypted_data,
+            "hash": data_hash,
+            "agg_sig": agg_sig.hex()  # Store as hex string
+        }
+        logger.info(f"Record to be inserted: {record}")
+
+        try:
+            result_record = weatherRecords.insert_one(record)
+            logger.info(f"Inserted record ID: {result_record.inserted_id}")
+        except Exception as e:
+            logger.error(f"Error inserting record: {e}")
+
+        try:
+            result_key = keysCollection.insert_one({"key": key})
+            logger.info(f"Inserted key ID: {result_key.inserted_id}")
+        except Exception as e:
+            logger.error(f"Error inserting key: {e}")
+
+        # Verify the aggregate signature
+        is_valid = SimpleSigner.verify_aggregate(identities, encrypted_data.encode(), agg_sig, public_keys)
+        logger.info(f"Aggregate signature valid: {is_valid}")
+    except (ValueError, TypeError) as e:
+        logger.error(f"Error in key processing or verification: {e}")
+        is_valid = False
+
+    return is_valid
 
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
@@ -191,8 +198,11 @@ def fetch_weather():
             logger.warning("FETCH_WEATHER is set to False")
             return jsonify({"message": "Weather data fetch is disabled"}), 403
 
-        fetch_and_store_weather()
-        return jsonify({"message": "Weather data fetched and stored successfully"}), 200
+        is_valid = fetch_and_store_weather()
+        if is_valid:
+            return jsonify({"message": "Weather data fetched and stored successfully", "valid": is_valid}), 200
+        else:
+            return jsonify({"message": "Weather data fetched but signature invalid", "valid": is_valid}), 500
     except Exception as e:
         logger.exception("Exception occurred")
         return jsonify({"error": "Internal Server Error"}), 500
