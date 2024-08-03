@@ -63,31 +63,9 @@ class SimpleSigner:
         signature = pkcs1_15.new(self.key).sign(h)
         return signature
 
-    def verify(self, identity, data, signature):
-        message = identity.encode() + data
-        h = SHA256.new(message)
-        try:
-            pkcs1_15.new(self.public_key).verify(h, signature)
-            return True
-        except (ValueError, TypeError):
-            return False
-
     @staticmethod
     def aggregate_signatures(signatures):
         return b''.join(signatures)
-
-    @staticmethod
-    def verify_aggregate(identities, data, aggregate_signature, public_keys):
-        signature_len = len(aggregate_signature) // len(public_keys)
-        for i, pub_key in enumerate(public_keys):
-            message = identities[i].encode() + data
-            message_hash = SHA256.new(message)
-            signature_part = aggregate_signature[i * signature_len:(i + 1) * signature_len]
-            try:
-                pkcs1_15.new(pub_key).verify(message_hash, signature_part)
-            except (ValueError, TypeError):
-                return False
-        return True
 
 @app.route('/setup', methods=['GET'])
 def setup():
@@ -123,7 +101,7 @@ def setup():
 
 def fetch_and_store_weather():
     """
-    Fetches weather data from the weather API, encrypts it, and stores it in MongoDB.
+    Fetches weather data from the weather API, encrypts it, signs it, and stores it in MongoDB.
     """
     if not FETCH_WEATHER:
         logger.warning("FETCH_WEATHER is set to False")
@@ -147,10 +125,31 @@ def fetch_and_store_weather():
     data_hash = get_hashed_data(encrypted_data)
     logger.info(f"Data hash: {data_hash}")
 
-    # Store encrypted data and hash in MongoDB
+    # Load keys and sign data
+    domains = customerDB.WeatherNodeInitiative.find_one().get('domain', {}).keys()
+    identities = []
+    signatures = []
+
+    for domain in domains:
+        domain = domain.replace('__dot__', '.')
+        signer = SimpleSigner(domain)
+        pub_key = customerDB.WeatherNodeInitiative.find_one().get(f'pub_{domain.replace(".", "_")}_PEM')
+        pri_key = customerDB.WeatherNodeInitiative.find_one().get(f'pri_{domain.replace(".", "_")}_PEM')
+        
+        signer.key = RSA.import_key(pri_key.encode())
+        signer.public_key = RSA.import_key(pub_key.encode())
+
+        signature = signer.sign(encrypted_data.encode())
+        signatures.append(signature)
+        identities.append(domain)
+
+    agg_sig = SimpleSigner.aggregate_signatures(signatures)
+
+    # Store encrypted data, hash, and aggregate signature in MongoDB
     record = {
         "data": encrypted_data,
-        "hash": data_hash
+        "hash": data_hash,
+        "agg_sig": agg_sig.hex()  # Store as hex string
     }
     logger.info(f"Record to be inserted: {record}")
 
