@@ -92,8 +92,8 @@ def setup():
         signer = SimpleSigner(domain)
         signer.generate_keys()
         pub_key, pri_key = signer.export_keys()
-        keys[f'pub_{domain.replace(".", "_")}_PEM'] = pub_key
-        keys[f'pri_{domain.replace(".", "_")}_PEM'] = pri_key
+        keys[f'pub_{domain.replace(".", "__dot__")}_PEM'] = pub_key
+        keys[f'pri_{domain.replace(".", "__dot__")}_PEM'] = pri_key
     
     collection.update_one({'_id': document['_id']}, {'$set': keys})
     
