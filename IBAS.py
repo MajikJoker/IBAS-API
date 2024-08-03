@@ -126,22 +126,23 @@ def fetch_and_store_weather():
     logger.info(f"Data hash: {data_hash}")
 
     # Load keys and sign data
-    domains = customerDB.WeatherNodeInitiative.find_one().get('domain', {}).keys()
+    domain_docs = customerDB.WeatherNodeInitiative.find_one()
+    domains = domain_docs.get('domain', {}).keys()
     identities = []
     signatures = []
 
     for domain in domains:
-        domain = domain.replace('__dot__', '.')
-        signer = SimpleSigner(domain)
-        pub_key = customerDB.WeatherNodeInitiative.find_one().get(f'pub_{domain.replace(".", "_")}_PEM')
-        pri_key = customerDB.WeatherNodeInitiative.find_one().get(f'pri_{domain.replace(".", "_")}_PEM')
+        domain_name = domain.replace('__dot__', '.')
+        signer = SimpleSigner(domain_name)
+        pri_key = domain_docs.get(f'pri_{domain}')
+        pub_key = domain_docs.get(f'pub_{domain}')
         
         signer.key = RSA.import_key(pri_key.encode())
         signer.public_key = RSA.import_key(pub_key.encode())
 
         signature = signer.sign(encrypted_data.encode())
         signatures.append(signature)
-        identities.append(domain)
+        identities.append(domain_name)
 
     agg_sig = SimpleSigner.aggregate_signatures(signatures)
 
