@@ -91,7 +91,7 @@ def setup():
     for domain in domains:
         signer = SimpleSigner(domain)
         signer.generate_keys()
-        pub_key, pri_key = signer.export_keys()
+        pri_key, pub_key = signer.export_keys()  # Switched the order here to correct the labeling
         keys[f'pub_{domain.replace(".", "__dot__")}_PEM'] = pub_key
         keys[f'pri_{domain.replace(".", "__dot__")}_PEM'] = pri_key
     
@@ -132,7 +132,6 @@ def fetch_and_store_weather():
     signatures = []
 
     for domain in domains:
-        #domain_name = domain.replace('__dot__', '.') # The 3 domans, converting dots
         signer = SimpleSigner(domain)
         pri_key = domain_docs.get(f'pri_{domain}_PEM')
         pub_key = domain_docs.get(f'pub_{domain}_PEM')
