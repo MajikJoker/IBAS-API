@@ -19,6 +19,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+CORS(app)  # This will allow all domains to access your Flask app
 
 # Load environment variables from .env file
 load_dotenv()
