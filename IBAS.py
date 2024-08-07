@@ -13,6 +13,8 @@ from Crypto.Signature import pkcs1_15
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
+from flask_cors import CORS
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
