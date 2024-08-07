@@ -38,7 +38,7 @@ customerDB = client.get_database('Customers')
 
 # Load capitals data from CSV
 capitals_data = {}
-with open('capitals.csv', mode='r') as infile:
+with open('capitals.csv', mode='r', encoding='utf-8-sig') as infile:
     reader = csv.DictReader(infile)
     for row in reader:
         capital = row['capital'].strip().lower()
