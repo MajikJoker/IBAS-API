@@ -5,6 +5,7 @@ from pymongo import MongoClient
 import os
 import signal
 import sys
+import csv
 from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, check_hash
 from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
@@ -34,6 +35,16 @@ db = client.get_database('ibas-server')
 weatherRecords = db.weather_records
 keysCollection = db.transitKeys
 customerDB = client.get_database('Customers')
+
+# Load capitals data from CSV
+capitals_data = {}
+with open('capitals.csv', mode='r') as infile:
+    reader = csv.DictReader(infile)
+    for row in reader:
+        capital = row['capital'].strip().lower()
+        lat = float(row['lat'])
+        lon = float(row['lon'])
+        capitals_data[capital] = (lat, lon)
 
 # Function to test the MongoDB connection
 @app.before_first_request
@@ -112,18 +123,34 @@ def setup():
     
     return jsonify({"domains": domains, "keys": keys}), 200
 
-def fetch_and_store_weather():
+def fetch_and_store_weather(capital=None):
     """
     Fetches weather data from the weather API, encrypts it, signs it, and stores it in MongoDB.
     """
     if not FETCH_WEATHER:
         logger.warning("FETCH_WEATHER is set to False")
-        return
+        return False
 
-    response = requests.get(OPENWEATHER_API_URL, params={"q": "London", "appid": OPENWEATHER_API_KEY})
+    if capital:
+        capital = capital.strip().lower()
+        location = capitals_data.get(capital)
+        if not location:
+            logger.error("Capital not found")
+            return False
+        lat, lon = location
+    else:
+        logger.error("No capital provided")
+        return False
+
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "appid": OPENWEATHER_API_KEY
+    }
+    response = requests.get(OPENWEATHER_API_URL, params=params)
     if response.status_code != 200:
         logger.error(f"Failed to fetch weather data: {response.status_code}")
-        return
+        return False
 
     weather_data = response.json()
     weather_data['timestamp'] = datetime.now(timezone.utc).isoformat()
@@ -194,15 +221,16 @@ def fetch_and_store_weather():
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
     try:
+        capital = request.args.get('capital', None)
         if not FETCH_WEATHER:
             logger.warning("FETCH_WEATHER is set to False")
             return jsonify({"message": "Weather data fetch is disabled"}), 403
 
-        is_valid = fetch_and_store_weather()
+        is_valid = fetch_and_store_weather(capital)
         if is_valid:
             return jsonify({"message": "Weather data fetched and stored successfully", "valid": is_valid}), 200
         else:
-            return jsonify({"message": "Weather data fetched but signature invalid", "valid": is_valid}), 500
+            return jsonify({"message": "Weather data fetched but signature invalid or capital not found", "valid": is_valid}), 500
     except Exception as e:
         logger.exception("Exception occurred")
         return jsonify({"error": "Internal Server Error"}), 500
