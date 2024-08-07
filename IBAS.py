@@ -23,8 +23,8 @@ app = Flask(__name__)
 load_dotenv()
 
 # Read environment variables for weather API URL, API key, MongoDB URI, and whether to fetch weather
-WEATHER_API_URL = os.environ.get("WEATHER_API_URL")
-WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
+OPENWEATHER_API_URL = os.environ.get("OPENWEATHER_API_URL")
+OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY")
 MONGO_URI = os.environ.get("AZURE_COSMOS_CONNECTIONSTRING")
 FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
@@ -120,7 +120,7 @@ def fetch_and_store_weather():
         logger.warning("FETCH_WEATHER is set to False")
         return
 
-    response = requests.get(WEATHER_API_URL, params={"q": "London", "appid": WEATHER_API_KEY})
+    response = requests.get(OPENWEATHER_API_URL, params={"q": "London", "appid": OPENWEATHER_API_KEY})
     if response.status_code != 200:
         logger.error(f"Failed to fetch weather data: {response.status_code}")
         return
@@ -216,10 +216,10 @@ def get_weather():
     params = {
         "lat": latitude,
         "lon": longitude,
-        "appid": WEATHER_API_KEY
+        "appid": OPENWEATHER_API_KEY
     }
 
-    response = requests.get(WEATHER_API_URL, params=params)
+    response = requests.get(OPENWEATHER_API_URL, params=params)
 
     if response.status_code == 200:
         weather_data = response.json()
