@@ -1,13 +1,17 @@
 import logging
 from flask import Flask, request, jsonify
-import os
+import requests
 from pymongo import MongoClient
+import os
+import signal
+import sys
 from utils import generate_key, encrypt_data, decrypt_data, get_hashed_data, check_hash
+from Crypto.PublicKey import RSA
+from Crypto.Hash import SHA256
+from Crypto.Signature import pkcs1_15
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
-from pkg import PKG, IBAS  # Import the PKG and IBAS classes
-from charm.toolbox.pairinggroup import PairingGroup
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -40,10 +44,41 @@ def test_db_connection():
     except Exception as e:
         logger.error(f"Failed to connect to MongoDB: {e}")
 
-# Initialize the pairing group and PKG
-group = PairingGroup('SS512')
-pkg = PKG(group)
-ibas = IBAS(group)
+class SimpleSigner:
+    def __init__(self, identity):
+        self.identity = identity
+        self.key = None
+        self.public_key = None
+
+    def generate_keys(self):
+        self.key = RSA.generate(2048)
+        self.public_key = self.key.publickey()
+
+    def export_keys(self):
+        return self.key.export_key().decode(), self.public_key.export_key().decode()
+
+    def sign(self, data):
+        message = self.identity.encode() + data
+        h = SHA256.new(message)
+        signature = pkcs1_15.new(self.key).sign(h)
+        return signature
+
+    @staticmethod
+    def aggregate_signatures(signatures):
+        return b''.join(signatures)
+
+    @staticmethod
+    def verify_aggregate(identities, data, aggregate_signature, public_keys):
+        signature_len = len(aggregate_signature) // len(public_keys)
+        for i, pub_key in enumerate(public_keys):
+            message = identities[i].encode() + data
+            message_hash = SHA256.new(message)
+            signature_part = aggregate_signature[i * signature_len:(i + 1) * signature_len]
+            try:
+                pkcs1_15.new(pub_key).verify(message_hash, signature_part)
+            except (ValueError, TypeError):
+                return False
+        return True
 
 @app.route('/setup', methods=['GET'])
 def setup():
@@ -67,9 +102,12 @@ def setup():
     
     keys = {}
     for domain in domains:
-        private_key = pkg.extract_private_key(domain)
-        keys[f'pri_{domain.replace(".", "__dot__")}_PEM'] = private_key
-        
+        signer = SimpleSigner(domain)
+        signer.generate_keys()
+        pri_key, pub_key = signer.export_keys()  # Switched the order here to correct the labeling
+        keys[f'pub_{domain.replace(".", "__dot__")}_PEM'] = pub_key
+        keys[f'pri_{domain.replace(".", "__dot__")}_PEM'] = pri_key
+    
     collection.update_one({'_id': document['_id']}, {'$set': keys})
     
     return jsonify({"domains": domains, "keys": keys}), 200
@@ -106,40 +144,50 @@ def fetch_and_store_weather():
     identities = []
     signatures = []
     public_keys = []
-
-    for domain in domains:
-        private_key = domain_docs.get(f'pri_{domain}_PEM')
-        public_key = pkg.public_key  # Use the public key of the PKG
-        signature = ibas.sign(private_key, encrypted_data.encode())
-        signatures.append(signature)
-        identities.append(domain)
-        public_keys.append(public_key)
-
-    agg_sig = ibas.aggregate_signatures(signatures)
-
-    # Store encrypted data, hash, and aggregate signature in MongoDB
-    record = {
-        "data": encrypted_data,
-        "hash": data_hash,
-        "agg_sig": group.serialize(agg_sig).decode()  # Serialize the aggregate signature
-    }
-    logger.info(f"Record to be inserted: {record}")
+    is_valid = False  # Default value for is_valid
 
     try:
-        result_record = weatherRecords.insert_one(record)
-        logger.info(f"Inserted record ID: {result_record.inserted_id}")
-    except Exception as e:
-        logger.error(f"Error inserting record: {e}")
+        for domain in domains:
+            signer = SimpleSigner(domain)
+            pri_key = domain_docs.get(f'pri_{domain}_PEM')
+            pub_key = domain_docs.get(f'pub_{domain}_PEM')
+            
+            signer.key = RSA.import_key(pri_key.encode())
+            signer.public_key = RSA.import_key(pub_key.encode())
 
-    try:
-        result_key = keysCollection.insert_one({"key": key})
-        logger.info(f"Inserted key ID: {result_key.inserted_id}")
-    except Exception as e:
-        logger.error(f"Error inserting key: {e}")
+            signature = signer.sign(encrypted_data.encode())
+            signatures.append(signature)
+            identities.append(domain)
+            public_keys.append(signer.public_key)
 
-    # Verify the aggregate signature
-    is_valid = ibas.verify(pkg.public_key, identities, [encrypted_data] * len(identities), agg_sig)
-    logger.info(f"Aggregate signature valid: {is_valid}")
+        agg_sig = SimpleSigner.aggregate_signatures(signatures)
+
+        # Store encrypted data, hash, and aggregate signature in MongoDB
+        record = {
+            "data": encrypted_data,
+            "hash": data_hash,
+            "agg_sig": agg_sig.hex()  # Store as hex string
+        }
+        logger.info(f"Record to be inserted: {record}")
+
+        try:
+            result_record = weatherRecords.insert_one(record)
+            logger.info(f"Inserted record ID: {result_record.inserted_id}")
+        except Exception as e:
+            logger.error(f"Error inserting record: {e}")
+
+        try:
+            result_key = keysCollection.insert_one({"key": key})
+            logger.info(f"Inserted key ID: {result_key.inserted_id}")
+        except Exception as e:
+            logger.error(f"Error inserting key: {e}")
+
+        # Verify the aggregate signature
+        is_valid = SimpleSigner.verify_aggregate(identities, encrypted_data.encode(), agg_sig, public_keys)
+        logger.info(f"Aggregate signature valid: {is_valid}")
+    except (ValueError, TypeError) as e:
+        logger.error(f"Error in key processing or verification: {e}")
+        is_valid = False
 
     return is_valid
 
