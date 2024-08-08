@@ -344,8 +344,9 @@ def get_weather():
 
 @app.route('/get-weather', methods=['GET'])
 def get_stored_weather():
-    record = weatherRecords.find_one()
-    key_record = keysCollection.find_one()
+    # Fetch the latest weather record
+    record = weatherRecords.find_one(sort=[("timestamp", -1)])
+    key_record = keysCollection.find_one(sort=[("_id", -1)])  # Assuming the key collection's latest key is what you need
 
     if not record or not key_record:
         return jsonify({"error": "No weather data available"}), 404
@@ -353,7 +354,7 @@ def get_stored_weather():
     encrypted_data = record["data"]
     stored_hash = record["hash"]
     key = key_record["key"]
-    print("encrypted_data",encrypted_data,"\nstored_hash",stored_hash,"\nkey",key)
+    print("encrypted_data", encrypted_data, "\nstored_hash", stored_hash, "\nkey", key)  # added this
 
     if not check_hash(encrypted_data, stored_hash):
         return jsonify({"error": "Data integrity compromised"}), 500
