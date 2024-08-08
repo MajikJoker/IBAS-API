@@ -353,6 +353,7 @@ def get_stored_weather():
     encrypted_data = record["data"]
     stored_hash = record["hash"]
     key = key_record["key"]
+    print("encrypted_data",encrypted_data,"\nstored_hash",stored_hash,"\nkey",key)
 
     if not check_hash(encrypted_data, stored_hash):
         return jsonify({"error": "Data integrity compromised"}), 500
