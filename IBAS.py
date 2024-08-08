@@ -259,9 +259,10 @@ def fetch_and_store_weather(capital=None):
         capital = capital.strip().lower()
         location = capitals_data.get(capital)
         if not location:
-            logger.error("Capital not found")
+            logger.error(f"Capital '{capital}' not found")
             return False
         lat, lon = location
+        logger.info(f"Capital '{capital}' found with coordinates: {lat}, {lon}")
     else:
         logger.error("No capital provided")
         return False
@@ -272,6 +273,7 @@ def fetch_and_store_weather(capital=None):
     weather_data_visualcrossing = fetch_weather_visualcrossing(lat, lon)
 
     if not weather_data_openweather or not weather_data_tomorrowio or not weather_data_visualcrossing:
+        logger.error("Failed to fetch weather data from one or more APIs")
         return False
 
     # Combine weather data from all three APIs
@@ -287,6 +289,7 @@ def fetch_and_store_weather(capital=None):
     if not check_weather_data_consistency(weather_data):
         logger.error("Weather data is inconsistent")
         return False
+    logger.info("Weather data is consistent")
 
     # Encrypt the weather data
     key = generate_key()
@@ -299,7 +302,15 @@ def fetch_and_store_weather(capital=None):
 
     # Load keys and sign data
     domain_docs = customerDB.WeatherNodeInitiative.find_one()  # This is weathernode initiative
+    if not domain_docs:
+        logger.error("No domain documents found in WeatherNodeInitiative")
+        return False
+    
     domains = domain_docs.get('domain', {}).keys()  # Getting the 3 domains
+    if not domains:
+        logger.error("No domains found in domain documents")
+        return False
+    
     identities = []
     signatures = []
     public_keys = []
@@ -311,6 +322,10 @@ def fetch_and_store_weather(capital=None):
             pri_key = domain_docs.get(f'pri_{domain}_PEM')
             pub_key = domain_docs.get(f'pub_{domain}_PEM')
 
+            if not pri_key or not pub_key:
+                logger.error(f"Private or public key not found for domain '{domain}'")
+                return False
+
             signer.key = RSA.import_key(pri_key.encode())
             signer.public_key = RSA.import_key(pub_key.encode())
 
@@ -320,6 +335,7 @@ def fetch_and_store_weather(capital=None):
             public_keys.append(signer.public_key)
 
         agg_sig = SimpleSigner.aggregate_signatures(signatures)
+        logger.info(f"Aggregate signature created")
 
         # Store encrypted data, hash, and aggregate signature in MongoDB
         record = {
@@ -360,8 +376,10 @@ def fetch_weather():
 
         is_valid = fetch_and_store_weather(capital)
         if is_valid:
+            logger.info(f"Weather data for capital '{capital}' fetched and stored successfully")
             return jsonify({"message": "Weather data fetched and stored successfully", "valid": is_valid}), 200
         else:
+            logger.warning(f"Weather data for capital '{capital}' fetched but signature invalid or capital not found")
             return jsonify({"message": "Weather data fetched but signature invalid or capital not found", "valid": is_valid}), 500
     except Exception as e:
         logger.exception("Exception occurred")
