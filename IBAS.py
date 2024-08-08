@@ -142,7 +142,7 @@ def fetch_weather_openweather(lat, lon):
         logger.error(f"OpenWeather API request failed with status code {response.status_code}")
         return None
 
-def fetch_weather_tomorrowio(lat, lon):
+#def fetch_weather_tomorrowio(lat, lon):
     params = {
         "location": f"{lat},{lon}",
         "apikey": TOMORROWIO_API_KEY
@@ -187,16 +187,17 @@ def fetch_and_store_weather(capital=None):
 
     # Fetch weather data from all three APIs
     weather_data_openweather = fetch_weather_openweather(lat, lon)
-    weather_data_tomorrowio = fetch_weather_tomorrowio(lat, lon)
+    #weather_data_tomorrowio = fetch_weather_tomorrowio(lat, lon)
     weather_data_visualcrossing = fetch_weather_visualcrossing(lat, lon)
 
-    if not weather_data_openweather or not weather_data_tomorrowio or not weather_data_visualcrossing:
+    #if not weather_data_openweather or not weather_data_tomorrowio or not weather_data_visualcrossing:
+    if not weather_data_openweather or not weather_data_visualcrossing:
         return False
 
     # Combine weather data from all three APIs
     weather_data = {
         "openweather": weather_data_openweather,
-        "tomorrowio": weather_data_tomorrowio,
+        #"tomorrowio": weather_data_tomorrowio,
         "visualcrossing": weather_data_visualcrossing,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
