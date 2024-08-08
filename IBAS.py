@@ -191,7 +191,7 @@ def fetch_and_store_weather(capital=None):
     #weather_data_visualcrossing = fetch_weather_visualcrossing(lat, lon)
 
     #if not weather_data_openweather or not weather_data_tomorrowio or not weather_data_visualcrossing:
-    if not weather_data_openweather or not weather_data_visualcrossing:
+    if not weather_data_openweather:
         return False
 
     # Combine weather data from all three APIs
