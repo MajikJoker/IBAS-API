@@ -15,7 +15,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
 from flask_cors import CORS
 
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,6 +28,10 @@ load_dotenv()
 # Read environment variables for weather API URL, API key, MongoDB URI, and whether to fetch weather
 OPENWEATHER_API_URL = os.environ.get("OPENWEATHER_API_URL")
 OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY")
+TOMORROWIO_API_KEY = os.environ.get("TOMORROWIO_API_KEY")
+TOMORROWIO_API_URL = os.environ.get("TOMORROWIO_API_URL")
+VISUALCROSSING_API_KEY = os.environ.get("VISUALCROSSING_API_KEY")
+VISUALCROSSING_API_URL = os.environ.get("VISUALCROSSING_API_URL")
 MONGO_URI = os.environ.get("AZURE_COSMOS_CONNECTIONSTRING")
 FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
@@ -126,6 +129,43 @@ def setup():
     
     return jsonify({"domains": domains, "keys": keys}), 200
 
+def fetch_weather_openweather(lat, lon):
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "appid": OPENWEATHER_API_KEY
+    }
+    response = requests.get(OPENWEATHER_API_URL, params=params)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        logger.error(f"OpenWeather API request failed with status code {response.status_code}")
+        return None
+
+def fetch_weather_tomorrowio(lat, lon):
+    params = {
+        "location": f"{lat},{lon}",
+        "apikey": TOMORROWIO_API_KEY
+    }
+    response = requests.get(TOMORROWIO_API_URL, params=params)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        logger.error(f"Tomorrow.io API request failed with status code {response.status_code}")
+        return None
+
+def fetch_weather_visualcrossing(lat, lon):
+    params = {
+        "location": f"{lat},{lon}",
+        "key": VISUALCROSSING_API_KEY
+    }
+    response = requests.get(VISUALCROSSING_API_URL, params=params)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        logger.error(f"Visualcrossing API request failed with status code {response.status_code}")
+        return None
+
 def fetch_and_store_weather(capital=None):
     """
     Fetches weather data from the weather API, encrypts it, signs it, and stores it in MongoDB.
@@ -145,18 +185,21 @@ def fetch_and_store_weather(capital=None):
         logger.error("No capital provided")
         return False
 
-    params = {
-        "lat": lat,
-        "lon": lon,
-        "appid": OPENWEATHER_API_KEY
-    }
-    response = requests.get(OPENWEATHER_API_URL, params=params)
-    if response.status_code != 200:
-        logger.error(f"Failed to fetch weather data: {response.status_code}")
+    # Fetch weather data from all three APIs
+    weather_data_openweather = fetch_weather_openweather(lat, lon)
+    weather_data_tomorrowio = fetch_weather_tomorrowio(lat, lon)
+    weather_data_visualcrossing = fetch_weather_visualcrossing(lat, lon)
+
+    if not weather_data_openweather or not weather_data_tomorrowio or not weather_data_visualcrossing:
         return False
 
-    weather_data = response.json()
-    weather_data['timestamp'] = datetime.now(timezone.utc).isoformat()
+    # Combine weather data from all three APIs
+    weather_data = {
+        "openweather": weather_data_openweather,
+        "tomorrowio": weather_data_tomorrowio,
+        "visualcrossing": weather_data_visualcrossing,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
     logger.info(f"Fetched weather data: {weather_data}")
 
     # Encrypt the weather data
