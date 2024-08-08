@@ -53,6 +53,8 @@ with open('capitals.csv', mode='r', encoding='utf-8-sig') as infile:
         capitals_data[capital] = (lat, lon)
 
 def is_within_margin(value1, value2, margin):
+    if value1 == 0 and value2 == 0:
+        return True  # Both values are zero, so they are equal
     return abs(value1 - value2) / max(value1, value2) <= margin
 
 def check_weather_data_consistency(data):
