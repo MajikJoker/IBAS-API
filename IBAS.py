@@ -142,7 +142,7 @@ def fetch_weather_openweather(lat, lon):
         logger.error(f"OpenWeather API request failed with status code {response.status_code}")
         return None
 
-#def fetch_weather_tomorrowio(lat, lon):
+def fetch_weather_tomorrowio(lat, lon):
     params = {
         "location": f"{lat},{lon}",
         "apikey": TOMORROWIO_API_KEY
@@ -154,7 +154,7 @@ def fetch_weather_openweather(lat, lon):
         logger.error(f"Tomorrow.io API request failed with status code {response.status_code}")
         return None
 
-#def fetch_weather_visualcrossing(lat, lon):
+def fetch_weather_visualcrossing(lat, lon):
     params = {
         "location": f"{lat},{lon}",
         "key": VISUALCROSSING_API_KEY
@@ -164,6 +164,36 @@ def fetch_weather_openweather(lat, lon):
         return response.json()
     else:
         logger.error(f"Visualcrossing API request failed with status code {response.status_code}")
+        return None
+    
+def simplify_tomorrowio_data(data):
+    try:
+        values = data['timelines']['minutely'][0]['values']
+        simplified_data = {
+            "temperature": values['temperature'],
+            "humidity": values['humidity'],
+            "pressure": values['pressureSurfaceLevel'],
+            "weather": "Partly cloudy" if values['cloudCover'] > 20 else "Clear",
+            "windSpeed": values['windSpeed']
+        }
+        return simplified_data
+    except Exception as e:
+        logger.error(f"Error simplifying Tomorrow.io data: {e}")
+        return None
+
+def simplify_visualcrossing_data(data):
+    try:
+        day = data['days'][0]
+        simplified_data = {
+            "temperature": day['temp'],
+            "humidity": day['humidity'],
+            "pressure": day['pressure'],
+            "weather": "Partly cloudy" if day['cloudcover'] > 20 else "Clear",
+            "windSpeed": day['windspeed']
+        }
+        return simplified_data
+    except Exception as e:
+        logger.error(f"Error simplifying VisualCrossing data: {e}")
         return None
 
 def fetch_and_store_weather(capital=None):
@@ -187,18 +217,24 @@ def fetch_and_store_weather(capital=None):
 
     # Fetch weather data from all three APIs
     weather_data_openweather = fetch_weather_openweather(lat, lon)
-    #weather_data_tomorrowio = fetch_weather_tomorrowio(lat, lon)
-    #weather_data_visualcrossing = fetch_weather_visualcrossing(lat, lon)
+    weather_data_tomorrowio = fetch_weather_tomorrowio(lat, lon)
+    weather_data_visualcrossing = fetch_weather_visualcrossing(lat, lon)
 
-    #if not weather_data_openweather or not weather_data_tomorrowio or not weather_data_visualcrossing:
-    if not weather_data_openweather:
+    if not weather_data_openweather or not weather_data_tomorrowio or not weather_data_visualcrossing:
+        return False
+
+    # Simplify the data from Tomorrow.io and VisualCrossing
+    simplified_tomorrowio = simplify_tomorrowio_data(weather_data_tomorrowio)
+    simplified_visualcrossing = simplify_visualcrossing_data(weather_data_visualcrossing)
+
+    if not simplified_tomorrowio or not simplified_visualcrossing:
         return False
 
     # Combine weather data from all three APIs
     weather_data = {
         "openweather": weather_data_openweather,
-        #"tomorrowio": weather_data_tomorrowio,
-        #"visualcrossing": weather_data_visualcrossing,
+        "tomorrowio": simplified_tomorrowio,
+        "visualcrossing": simplified_visualcrossing,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
     logger.info(f"Fetched weather data: {weather_data}")
@@ -213,8 +249,8 @@ def fetch_and_store_weather(capital=None):
     logger.info(f"Data hash: {data_hash}")
 
     # Load keys and sign data
-    domain_docs = customerDB.WeatherNodeInitiative.find_one() # This is weathernode initiative
-    domains = domain_docs.get('domain', {}).keys() # Getting the 3 domains
+    domain_docs = customerDB.WeatherNodeInitiative.find_one()  # This is weathernode initiative
+    domains = domain_docs.get('domain', {}).keys()  # Getting the 3 domains
     identities = []
     signatures = []
     public_keys = []
@@ -225,7 +261,7 @@ def fetch_and_store_weather(capital=None):
             signer = SimpleSigner(domain)
             pri_key = domain_docs.get(f'pri_{domain}_PEM')
             pub_key = domain_docs.get(f'pub_{domain}_PEM')
-            
+
             signer.key = RSA.import_key(pri_key.encode())
             signer.public_key = RSA.import_key(pub_key.encode())
 
@@ -264,6 +300,7 @@ def fetch_and_store_weather(capital=None):
         is_valid = False
 
     return is_valid
+
 
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
@@ -307,36 +344,22 @@ def get_weather():
 
 @app.route('/get-weather', methods=['GET'])
 def get_stored_weather():
-    try:
-        record = weatherRecords.find_one()
-        key_record = keysCollection.find_one()
+    record = weatherRecords.find_one()
+    key_record = keysCollection.find_one()
 
-        if not record or not key_record:
-            logger.error("No weather data or key available")
-            return jsonify({"error": "No weather data available"}), 404
+    if not record or not key_record:
+        return jsonify({"error": "No weather data available"}), 404
 
-        encrypted_data = record["data"]
-        stored_hash = record["hash"]
-        key = key_record["key"]
+    encrypted_data = record["data"]
+    stored_hash = record["hash"]
+    key = key_record["key"]
 
-        logger.info(f"Retrieved encrypted data: {encrypted_data}")
-        logger.info(f"Retrieved key: {key}")
-        logger.info(f"Stored hash: {stored_hash}")
+    if not check_hash(encrypted_data, stored_hash):
+        return jsonify({"error": "Data integrity compromised"}), 500
 
-        if not check_hash(encrypted_data, stored_hash):
-            logger.error("Data integrity compromised: hash mismatch")
-            return jsonify({"error": "Data integrity compromised"}), 500
+    weather_data = decrypt_data(encrypted_data, key)
 
-        try:
-            weather_data = decrypt_data(encrypted_data, key)
-            logger.info(f"Decrypted weather data: {weather_data}")
-            return jsonify(weather_data), 200
-        except ValueError as e:
-            logger.error(f"Decryption failed: {e}")
-            return jsonify({"error": "Decryption failed"}), 500
-    except Exception as e:
-        logger.exception("Exception occurred in get_stored_weather")
-        return jsonify({"error": "Internal Server Error"}), 500
+    return jsonify(weather_data), 200
 
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
