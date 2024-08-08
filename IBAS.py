@@ -133,11 +133,22 @@ def fetch_weather_openweather(lat, lon):
     params = {
         "lat": lat,
         "lon": lon,
-        "appid": OPENWEATHER_API_KEY
+        "appid": OPENWEATHER_API_KEY,
+        "units": "metric"
     }
     response = requests.get(OPENWEATHER_API_URL, params=params)
     if response.status_code == 200:
-        return response.json()
+        data = response.json()
+        simplified_data = {
+            "temperature": data["main"]["temp"],
+            "temperatureApparent": data["main"]["feels_like"],
+            "humidity": data["main"]["humidity"],
+            "pressure": data["main"]["pressure"],
+            "windSpeed": data["wind"]["speed"],
+            "cloudCover": data["clouds"]["all"],
+            "precipitation": data.get("rain", {}).get("1h", 0)
+        }
+        return simplified_data
     else:
         logger.error(f"OpenWeather API request failed with status code {response.status_code}")
         return None
@@ -145,11 +156,22 @@ def fetch_weather_openweather(lat, lon):
 def fetch_weather_tomorrowio(lat, lon):
     params = {
         "location": f"{lat},{lon}",
-        "apikey": TOMORROWIO_API_KEY
+        "apikey": TOMORROWIO_API_KEY,
+        "units": "metric"
     }
     response = requests.get(TOMORROWIO_API_URL, params=params)
     if response.status_code == 200:
-        return response.json()
+        data = response.json()
+        simplified_data = {
+            "temperature": data['timelines']['minutely'][0]['values']['temperature'],
+            "temperatureApparent": data['timelines']['minutely'][0]['values']['temperatureApparent'],
+            "humidity": data['timelines']['minutely'][0]['values']['humidity'],
+            "pressure": data['timelines']['minutely'][0]['values']['pressureSurfaceLevel'],
+            "windSpeed": data['timelines']['minutely'][0]['values']['windSpeed'],
+            "cloudCover": data['timelines']['minutely'][0]['values']['cloudCover'],
+            "precipitation": data['timelines']['minutely'][0]['values']['rainIntensity']
+        }
+        return simplified_data
     else:
         logger.error(f"Tomorrow.io API request failed with status code {response.status_code}")
         return None
@@ -157,45 +179,27 @@ def fetch_weather_tomorrowio(lat, lon):
 def fetch_weather_visualcrossing(lat, lon):
     params = {
         "location": f"{lat},{lon}",
-        "key": VISUALCROSSING_API_KEY
+        "key": VISUALCROSSING_API_KEY,
+        "unitGroup": "metric"
     }
     response = requests.get(VISUALCROSSING_API_URL, params=params)
     if response.status_code == 200:
-        return response.json()
-    else:
-        logger.error(f"Visualcrossing API request failed with status code {response.status_code}")
-        return None
-    
-def simplify_tomorrowio_data(data):
-    try:
-        values = data['timelines']['minutely'][0]['values']
-        simplified_data = {
-            "temperature": values['temperature'],
-            "humidity": values['humidity'],
-            "pressure": values['pressureSurfaceLevel'],
-            "weather": "Partly cloudy" if values['cloudCover'] > 20 else "Clear",
-            "windSpeed": values['windSpeed']
-        }
-        return simplified_data
-    except Exception as e:
-        logger.error(f"Error simplifying Tomorrow.io data: {e}")
-        return None
-
-def simplify_visualcrossing_data(data):
-    try:
+        data = response.json()
         day = data['days'][0]
         simplified_data = {
             "temperature": day['temp'],
+            "temperatureApparent": day['feelslike'],
             "humidity": day['humidity'],
             "pressure": day['pressure'],
-            "weather": "Partly cloudy" if day['cloudcover'] > 20 else "Clear",
-            "windSpeed": day['windspeed']
+            "windSpeed": day['windspeed'],
+            "cloudCover": day['cloudcover'],
+            "precipitation": day['precip']
         }
         return simplified_data
-    except Exception as e:
-        logger.error(f"Error simplifying VisualCrossing data: {e}")
+    else:
+        logger.error(f"VisualCrossing API request failed with status code {response.status_code}")
         return None
-
+    
 def fetch_and_store_weather(capital=None):
     """
     Fetches weather data from the weather API, encrypts it, signs it, and stores it in MongoDB.
@@ -223,18 +227,11 @@ def fetch_and_store_weather(capital=None):
     if not weather_data_openweather or not weather_data_tomorrowio or not weather_data_visualcrossing:
         return False
 
-    # Simplify the data from Tomorrow.io and VisualCrossing
-    simplified_tomorrowio = simplify_tomorrowio_data(weather_data_tomorrowio)
-    simplified_visualcrossing = simplify_visualcrossing_data(weather_data_visualcrossing)
-
-    if not simplified_tomorrowio or not simplified_visualcrossing:
-        return False
-
     # Combine weather data from all three APIs
     weather_data = {
         "openweather": weather_data_openweather,
-        "tomorrowio": simplified_tomorrowio,
-        "visualcrossing": simplified_visualcrossing,
+        "tomorrowio": weather_data_tomorrowio,
+        "visualcrossing": weather_data_visualcrossing,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
     logger.info(f"Fetched weather data: {weather_data}")
@@ -328,14 +325,24 @@ def get_weather():
     params = {
         "lat": latitude,
         "lon": longitude,
-        "appid": OPENWEATHER_API_KEY
+        "appid": OPENWEATHER_API_KEY,
+        "units": "metric"
     }
 
     response = requests.get(OPENWEATHER_API_URL, params=params)
 
     if response.status_code == 200:
         weather_data = response.json()
-        return jsonify(weather_data)
+        simplified_data = {
+            "temperature": weather_data["main"]["temp"],
+            "temperatureApparent": weather_data["main"]["feels_like"],
+            "humidity": weather_data["main"]["humidity"],
+            "pressure": weather_data["main"]["pressure"],
+            "windSpeed": weather_data["wind"]["speed"],
+            "cloudCover": weather_data["clouds"]["all"],
+            "precipitation": weather_data.get("rain", {}).get("1h", 0)
+        }
+        return jsonify(simplified_data)
     else:
         return jsonify({
             "error": f"API request failed with status code {response.status_code}",
@@ -354,7 +361,6 @@ def get_stored_weather():
     encrypted_data = record["data"]
     stored_hash = record["hash"]
     key = key_record["key"]
-    print("encrypted_data", encrypted_data, "\nstored_hash", stored_hash, "\nkey", key)  # added this
 
     if not check_hash(encrypted_data, stored_hash):
         return jsonify({"error": "Data integrity compromised"}), 500
