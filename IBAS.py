@@ -344,22 +344,36 @@ def get_weather():
 
 @app.route('/get-weather', methods=['GET'])
 def get_stored_weather():
-    record = weatherRecords.find_one()
-    key_record = keysCollection.find_one()
+    try:
+        record = weatherRecords.find_one()
+        key_record = keysCollection.find_one()
 
-    if not record or not key_record:
-        return jsonify({"error": "No weather data available"}), 404
+        if not record or not key_record:
+            logger.error("No weather data or key available")
+            return jsonify({"error": "No weather data available"}), 404
 
-    encrypted_data = record["data"]
-    stored_hash = record["hash"]
-    key = key_record["key"]
+        encrypted_data = record["data"]
+        stored_hash = record["hash"]
+        key = key_record["key"]
 
-    if not check_hash(encrypted_data, stored_hash):
-        return jsonify({"error": "Data integrity compromised"}), 500
+        logger.info(f"Retrieved encrypted data: {encrypted_data}")
+        logger.info(f"Retrieved key: {key}")
+        logger.info(f"Stored hash: {stored_hash}")
 
-    weather_data = decrypt_data(encrypted_data, key)
+        if not check_hash(encrypted_data, stored_hash):
+            logger.error("Data integrity compromised: hash mismatch")
+            return jsonify({"error": "Data integrity compromised"}), 500
 
-    return jsonify(weather_data), 200
+        try:
+            weather_data = decrypt_data(encrypted_data, key)
+            logger.info(f"Decrypted weather data: {weather_data}")
+            return jsonify(weather_data), 200
+        except ValueError as e:
+            logger.error(f"Decryption failed: {e}")
+            return jsonify({"error": "Decryption failed"}), 500
+    except Exception as e:
+        logger.exception("Exception occurred in get_stored_weather")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
