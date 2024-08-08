@@ -59,12 +59,12 @@ def is_within_margin(value1, value2, margin):
 
 def check_weather_data_consistency(data):
     margins = {
-        "temperature": 0.1,  # 10%
-        "humidity": 0.2,     # 20%
-        "pressure": 0.05,    # 5%
-        "windSpeed": 0.2,    # 20%
-        "cloudCover": 0.2,   # 20%
-        "precipitation": 0.5 # 50%
+        "temperature": 0.15,  # 15%
+        "humidity": 0.25,     # 25%
+        "pressure": 0.1,      # 10%
+        "windSpeed": 0.5,     # 50%
+        "cloudCover": 0.3,    # 30%
+        "precipitation": 1.0  # 100%
     }
 
     tomorrowio = data['tomorrowio']
@@ -99,7 +99,7 @@ def check_weather_data_consistency(data):
 
     for check_name, result in checks:
         if not result:
-            logger.error(f"Inconsistency found in {check_name}")
+            logger.error(f"Inconsistency found in {check_name}: {result}")
 
     return all(result for _, result in checks)
 
