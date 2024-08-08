@@ -52,6 +52,51 @@ with open('capitals.csv', mode='r', encoding='utf-8-sig') as infile:
         lon = float(row['lon'])
         capitals_data[capital] = (lat, lon)
 
+def is_within_margin(value1, value2, margin):
+    return abs(value1 - value2) / max(value1, value2) <= margin
+
+def check_weather_data_consistency(data):
+    margins = {
+        "temperature": 0.1,  # 10%
+        "humidity": 0.2,     # 20%
+        "pressure": 0.05,    # 5%
+        "windSpeed": 0.2,    # 20%
+        "cloudCover": 0.2,   # 20%
+        "precipitation": 0.5 # 50%
+    }
+
+    tomorrowio = data['tomorrowio']
+    visualcrossing = data['visualcrossing']
+    openweather = data['openweather']
+
+    checks = [
+        is_within_margin(tomorrowio["temperature"], visualcrossing["temperature"], margins["temperature"]),
+        is_within_margin(tomorrowio["temperature"], openweather["temperature"], margins["temperature"]),
+        is_within_margin(visualcrossing["temperature"], openweather["temperature"], margins["temperature"]),
+        
+        is_within_margin(tomorrowio["humidity"], visualcrossing["humidity"], margins["humidity"]),
+        is_within_margin(tomorrowio["humidity"], openweather["humidity"], margins["humidity"]),
+        is_within_margin(visualcrossing["humidity"], openweather["humidity"], margins["humidity"]),
+        
+        is_within_margin(tomorrowio["pressure"], visualcrossing["pressure"], margins["pressure"]),
+        is_within_margin(tomorrowio["pressure"], openweather["pressure"], margins["pressure"]),
+        is_within_margin(visualcrossing["pressure"], openweather["pressure"], margins["pressure"]),
+        
+        is_within_margin(tomorrowio["windSpeed"], visualcrossing["windSpeed"], margins["windSpeed"]),
+        is_within_margin(tomorrowio["windSpeed"], openweather["windSpeed"], margins["windSpeed"]),
+        is_within_margin(visualcrossing["windSpeed"], openweather["windSpeed"], margins["windSpeed"]),
+        
+        is_within_margin(tomorrowio["cloudCover"], visualcrossing["cloudCover"], margins["cloudCover"]),
+        is_within_margin(tomorrowio["cloudCover"], openweather["cloudCover"], margins["cloudCover"]),
+        is_within_margin(visualcrossing["cloudCover"], openweather["cloudCover"], margins["cloudCover"]),
+        
+        is_within_margin(tomorrowio["precipitation"], visualcrossing["precipitation"], margins["precipitation"]),
+        is_within_margin(tomorrowio["precipitation"], openweather["precipitation"], margins["precipitation"]),
+        is_within_margin(visualcrossing["precipitation"], openweather["precipitation"], margins["precipitation"])
+    ]
+
+    return all(checks)
+
 # Function to test the MongoDB connection
 @app.before_first_request
 def test_db_connection():
@@ -236,6 +281,11 @@ def fetch_and_store_weather(capital=None):
     }
     logger.info(f"Fetched weather data: {weather_data}")
 
+    # Check weather data consistency
+    if not check_weather_data_consistency(weather_data):
+        logger.error("Weather data is inconsistent")
+        return False
+
     # Encrypt the weather data
     key = generate_key()
     encrypted_data = encrypt_data(weather_data, key)
@@ -297,7 +347,6 @@ def fetch_and_store_weather(capital=None):
         is_valid = False
 
     return is_valid
-
 
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
