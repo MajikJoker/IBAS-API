@@ -72,32 +72,36 @@ def check_weather_data_consistency(data):
     openweather = data['openweather']
 
     checks = [
-        is_within_margin(tomorrowio["temperature"], visualcrossing["temperature"], margins["temperature"]),
-        is_within_margin(tomorrowio["temperature"], openweather["temperature"], margins["temperature"]),
-        is_within_margin(visualcrossing["temperature"], openweather["temperature"], margins["temperature"]),
+        ("temperature", is_within_margin(tomorrowio["temperature"], visualcrossing["temperature"], margins["temperature"])),
+        ("temperature", is_within_margin(tomorrowio["temperature"], openweather["temperature"], margins["temperature"])),
+        ("temperature", is_within_margin(visualcrossing["temperature"], openweather["temperature"], margins["temperature"])),
         
-        is_within_margin(tomorrowio["humidity"], visualcrossing["humidity"], margins["humidity"]),
-        is_within_margin(tomorrowio["humidity"], openweather["humidity"], margins["humidity"]),
-        is_within_margin(visualcrossing["humidity"], openweather["humidity"], margins["humidity"]),
+        ("humidity", is_within_margin(tomorrowio["humidity"], visualcrossing["humidity"], margins["humidity"])),
+        ("humidity", is_within_margin(tomorrowio["humidity"], openweather["humidity"], margins["humidity"])),
+        ("humidity", is_within_margin(visualcrossing["humidity"], openweather["humidity"], margins["humidity"])),
         
-        is_within_margin(tomorrowio["pressure"], visualcrossing["pressure"], margins["pressure"]),
-        is_within_margin(tomorrowio["pressure"], openweather["pressure"], margins["pressure"]),
-        is_within_margin(visualcrossing["pressure"], openweather["pressure"], margins["pressure"]),
+        ("pressure", is_within_margin(tomorrowio["pressure"], visualcrossing["pressure"], margins["pressure"])),
+        ("pressure", is_within_margin(tomorrowio["pressure"], openweather["pressure"], margins["pressure"])),
+        ("pressure", is_within_margin(visualcrossing["pressure"], openweather["pressure"], margins["pressure"])),
         
-        is_within_margin(tomorrowio["windSpeed"], visualcrossing["windSpeed"], margins["windSpeed"]),
-        is_within_margin(tomorrowio["windSpeed"], openweather["windSpeed"], margins["windSpeed"]),
-        is_within_margin(visualcrossing["windSpeed"], openweather["windSpeed"], margins["windSpeed"]),
+        ("windSpeed", is_within_margin(tomorrowio["windSpeed"], visualcrossing["windSpeed"], margins["windSpeed"])),
+        ("windSpeed", is_within_margin(tomorrowio["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
+        ("windSpeed", is_within_margin(visualcrossing["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
         
-        is_within_margin(tomorrowio["cloudCover"], visualcrossing["cloudCover"], margins["cloudCover"]),
-        is_within_margin(tomorrowio["cloudCover"], openweather["cloudCover"], margins["cloudCover"]),
-        is_within_margin(visualcrossing["cloudCover"], openweather["cloudCover"], margins["cloudCover"]),
+        ("cloudCover", is_within_margin(tomorrowio["cloudCover"], visualcrossing["cloudCover"], margins["cloudCover"])),
+        ("cloudCover", is_within_margin(tomorrowio["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
+        ("cloudCover", is_within_margin(visualcrossing["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
         
-        is_within_margin(tomorrowio["precipitation"], visualcrossing["precipitation"], margins["precipitation"]),
-        is_within_margin(tomorrowio["precipitation"], openweather["precipitation"], margins["precipitation"]),
-        is_within_margin(visualcrossing["precipitation"], openweather["precipitation"], margins["precipitation"])
+        ("precipitation", is_within_margin(tomorrowio["precipitation"], visualcrossing["precipitation"], margins["precipitation"])),
+        ("precipitation", is_within_margin(tomorrowio["precipitation"], openweather["precipitation"], margins["precipitation"])),
+        ("precipitation", is_within_margin(visualcrossing["precipitation"], openweather["precipitation"], margins["precipitation"]))
     ]
 
-    return all(checks)
+    for check_name, result in checks:
+        if not result:
+            logger.error(f"Inconsistency found in {check_name}")
+
+    return all(result for _, result in checks)
 
 # Function to test the MongoDB connection
 @app.before_first_request
