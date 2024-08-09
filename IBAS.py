@@ -97,9 +97,36 @@ def check_weather_data_consistency(data):
         ("precipitation", is_within_margin(visualcrossing["precipitation"], openweather["precipitation"], margins["precipitation"]))
     ]
 
+    valid_data = {
+        "temperature": [],
+        "humidity": [],
+        "pressure": [],
+        "windSpeed": [],
+        "cloudCover": [],
+        "precipitation": []
+    }
+
+
     for check_name, result in checks:
         if not result:
             logger.error(f"Inconsistency found in {check_name}: {result}")
+    
+    for check_name, result in checks:
+        if result:
+            if check_name == "temperature":
+                valid_data["temperature"].extend([tomorrowio["temperature"], visualcrossing["temperature"], openweather["temperature"]])
+            elif check_name == "humidity":
+                valid_data["humidity"].extend([tomorrowio["humidity"], visualcrossing["humidity"], openweather["humidity"]])
+            elif check_name == "pressure":
+                valid_data["pressure"].extend([tomorrowio["pressure"], visualcrossing["pressure"], openweather["pressure"]])
+            elif check_name == "windSpeed":
+                valid_data["windSpeed"].extend([tomorrowio["windSpeed"], visualcrossing["windSpeed"], openweather["windSpeed"]])
+            elif check_name == "cloudCover":
+                valid_data["cloudCover"].extend([tomorrowio["cloudCover"], visualcrossing["cloudCover"], openweather["cloudCover"]])
+            elif check_name == "precipitation":
+                valid_data["precipitation"].extend([tomorrowio["precipitation"], visualcrossing["precipitation"], openweather["precipitation"]])
+        else:
+            logger.error(f"Inconsistency found in {check_name}")
 
     return all(result for _, result in checks)
 
@@ -295,9 +322,14 @@ def fetch_and_store_weather(capital=None):
         return False
     logger.info("Weather data is consistent")
 
+    # Calculate averages for consistent fields
+    averages = {field: sum(values) / len(values) for field, values in valid_data.items() if values}
+    logger.info(f"Averages computed: {averages}")
+
+
     # Encrypt the weather data
     key = generate_key()
-    encrypted_data = encrypt_data(weather_data, key)
+    encrypted_data = encrypt_data(averages, key)
     logger.info(f"Encrypted data: {encrypted_data}")
 
     # Compute hash of the encrypted data
