@@ -61,15 +61,24 @@ def check_weather_data_consistency(data):
     margins = {
         "temperature": 0.2,  # 20%
         "humidity": 0.4,     # 40%
-        "pressure": 0.2,      # 20%
-        "windSpeed": 0.5,     # 50%
-        "cloudCover": 0.3,    # 30%
-        "precipitation": 1.0  # 100%
+        "pressure": 0.2,     # 20%
+        "windSpeed": 0.5,    # 50%
+        "cloudCover": 0.3,   # 30%
+        "precipitation": 1.0 # 100%
     }
 
     tomorrowio = data['tomorrowio']
     visualcrossing = data['visualcrossing']
     openweather = data['openweather']
+
+    valid_data = {
+        "temperature": [],
+        "humidity": [],
+        "pressure": [],
+        "windSpeed": [],
+        "cloudCover": [],
+        "precipitation": []
+    }
 
     checks = [
         ("temperature", is_within_margin(tomorrowio["temperature"], visualcrossing["temperature"], margins["temperature"])),
@@ -84,33 +93,23 @@ def check_weather_data_consistency(data):
         ("pressure", is_within_margin(tomorrowio["pressure"], openweather["pressure"], margins["pressure"])),
         ("pressure", is_within_margin(visualcrossing["pressure"], openweather["pressure"], margins["pressure"])),
         
-        #("windSpeed", is_within_margin(tomorrowio["windSpeed"], visualcrossing["windSpeed"], margins["windSpeed"])),
-        #("windSpeed", is_within_margin(tomorrowio["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
-        #("windSpeed", is_within_margin(visualcrossing["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
+        ("windSpeed", is_within_margin(tomorrowio["windSpeed"], visualcrossing["windSpeed"], margins["windSpeed"])),
+        ("windSpeed", is_within_margin(tomorrowio["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
+        ("windSpeed", is_within_margin(visualcrossing["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
         
-        #("cloudCover", is_within_margin(tomorrowio["cloudCover"], visualcrossing["cloudCover"], margins["cloudCover"])),
-        #("cloudCover", is_within_margin(tomorrowio["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
-        #("cloudCover", is_within_margin(visualcrossing["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
+        ("cloudCover", is_within_margin(tomorrowio["cloudCover"], visualcrossing["cloudCover"], margins["cloudCover"])),
+        ("cloudCover", is_within_margin(tomorrowio["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
+        ("cloudCover", is_within_margin(visualcrossing["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
         
         ("precipitation", is_within_margin(tomorrowio["precipitation"], visualcrossing["precipitation"], margins["precipitation"])),
         ("precipitation", is_within_margin(tomorrowio["precipitation"], openweather["precipitation"], margins["precipitation"])),
         ("precipitation", is_within_margin(visualcrossing["precipitation"], openweather["precipitation"], margins["precipitation"]))
     ]
 
-    valid_data = {
-        "temperature": [],
-        "humidity": [],
-        "pressure": [],
-        "windSpeed": [],
-        "cloudCover": [],
-        "precipitation": []
-    }
-
-
     for check_name, result in checks:
         if not result:
             logger.error(f"Inconsistency found in {check_name}: {result}")
-    
+
     for check_name, result in checks:
         if result:
             if check_name == "temperature":
@@ -128,7 +127,8 @@ def check_weather_data_consistency(data):
         else:
             logger.error(f"Inconsistency found in {check_name}")
 
-    return all(result for _, result in checks)
+    return all(result for _, result in checks), valid_data
+
 
 # Function to test the MongoDB connection
 @app.before_first_request
@@ -279,9 +279,6 @@ def fetch_weather_visualcrossing(lat, lon):
         return None
     
 def fetch_and_store_weather(capital=None):
-    """
-    Fetches weather data from the weather API, encrypts it, signs it, and stores it in MongoDB.
-    """
     if not FETCH_WEATHER:
         logger.warning("FETCH_WEATHER is set to False")
         return False
@@ -298,7 +295,6 @@ def fetch_and_store_weather(capital=None):
         logger.error("No capital provided")
         return False
 
-    # Fetch weather data from all three APIs
     weather_data_openweather = fetch_weather_openweather(lat, lon)
     weather_data_tomorrowio = fetch_weather_tomorrowio(lat, lon)
     weather_data_visualcrossing = fetch_weather_visualcrossing(lat, lon)
@@ -307,7 +303,6 @@ def fetch_and_store_weather(capital=None):
         logger.error("Failed to fetch weather data from one or more APIs")
         return False
 
-    # Combine weather data from all three APIs
     weather_data = {
         "openweather": weather_data_openweather,
         "tomorrowio": weather_data_tomorrowio,
@@ -316,8 +311,8 @@ def fetch_and_store_weather(capital=None):
     }
     logger.info(f"Fetched weather data: {weather_data}")
 
-    # Check weather data consistency
-    if not check_weather_data_consistency(weather_data):
+    is_consistent, valid_data = check_weather_data_consistency(weather_data)
+    if not is_consistent:
         logger.error("Weather data is inconsistent")
         return False
     logger.info("Weather data is consistent")
@@ -326,31 +321,28 @@ def fetch_and_store_weather(capital=None):
     averages = {field: sum(values) / len(values) for field, values in valid_data.items() if values}
     logger.info(f"Averages computed: {averages}")
 
-
-    # Encrypt the weather data
+    # Encrypt the averages
     key = generate_key()
     encrypted_data = encrypt_data(averages, key)
     logger.info(f"Encrypted data: {encrypted_data}")
 
-    # Compute hash of the encrypted data
     data_hash = get_hashed_data(encrypted_data)
     logger.info(f"Data hash: {data_hash}")
 
-    # Load keys and sign data
-    domain_docs = customerDB.WeatherNodeInitiative.find_one()  # This is weathernode initiative
+    domain_docs = customerDB.WeatherNodeInitiative.find_one()
     if not domain_docs:
         logger.error("No domain documents found in WeatherNodeInitiative")
         return False
     
-    domains = domain_docs.get('domain', {}).keys()  # Getting the 3 domains
+    domains = domain_docs.get('domain', {}).keys()
     if not domains:
         logger.error("No domains found in domain documents")
         return False
-    
+
     identities = []
     signatures = []
     public_keys = []
-    is_valid = False  # Default value for is_valid
+    is_valid = False
 
     try:
         for domain in domains:
@@ -373,11 +365,10 @@ def fetch_and_store_weather(capital=None):
         agg_sig = SimpleSigner.aggregate_signatures(signatures)
         logger.info(f"Aggregate signature created")
 
-        # Store encrypted data, hash, and aggregate signature in MongoDB
         record = {
             "data": encrypted_data,
             "hash": data_hash,
-            "agg_sig": agg_sig.hex()  # Store as hex string
+            "agg_sig": agg_sig.hex()
         }
         logger.info(f"Record to be inserted: {record}")
 
@@ -393,7 +384,6 @@ def fetch_and_store_weather(capital=None):
         except Exception as e:
             logger.error(f"Error inserting key: {e}")
 
-        # Verify the aggregate signature
         is_valid = SimpleSigner.verify_aggregate(identities, encrypted_data.encode(), agg_sig, public_keys)
         logger.info(f"Aggregate signature valid: {is_valid}")
     except (ValueError, TypeError) as e:
@@ -401,6 +391,7 @@ def fetch_and_store_weather(capital=None):
         is_valid = False
 
     return is_valid
+
 
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
