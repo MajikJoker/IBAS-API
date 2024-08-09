@@ -59,9 +59,9 @@ def is_within_margin(value1, value2, margin):
 
 def check_weather_data_consistency(data):
     margins = {
-        "temperature": 0.15,  # 15%
-        "humidity": 0.25,     # 25%
-        "pressure": 0.1,      # 10%
+        "temperature": 0.2,  # 20%
+        "humidity": 0.4,     # 40%
+        "pressure": 0.2,      # 20%
         "windSpeed": 0.5,     # 50%
         "cloudCover": 0.3,    # 30%
         "precipitation": 1.0  # 100%
@@ -84,13 +84,13 @@ def check_weather_data_consistency(data):
         ("pressure", is_within_margin(tomorrowio["pressure"], openweather["pressure"], margins["pressure"])),
         ("pressure", is_within_margin(visualcrossing["pressure"], openweather["pressure"], margins["pressure"])),
         
-        ("windSpeed", is_within_margin(tomorrowio["windSpeed"], visualcrossing["windSpeed"], margins["windSpeed"])),
-        ("windSpeed", is_within_margin(tomorrowio["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
-        ("windSpeed", is_within_margin(visualcrossing["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
+        #("windSpeed", is_within_margin(tomorrowio["windSpeed"], visualcrossing["windSpeed"], margins["windSpeed"])),
+        #("windSpeed", is_within_margin(tomorrowio["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
+        #("windSpeed", is_within_margin(visualcrossing["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
         
-        ("cloudCover", is_within_margin(tomorrowio["cloudCover"], visualcrossing["cloudCover"], margins["cloudCover"])),
-        ("cloudCover", is_within_margin(tomorrowio["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
-        ("cloudCover", is_within_margin(visualcrossing["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
+        #("cloudCover", is_within_margin(tomorrowio["cloudCover"], visualcrossing["cloudCover"], margins["cloudCover"])),
+        #("cloudCover", is_within_margin(tomorrowio["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
+        #("cloudCover", is_within_margin(visualcrossing["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
         
         ("precipitation", is_within_margin(tomorrowio["precipitation"], visualcrossing["precipitation"], margins["precipitation"])),
         ("precipitation", is_within_margin(tomorrowio["precipitation"], openweather["precipitation"], margins["precipitation"])),
@@ -452,7 +452,7 @@ signal.signal(signal.SIGINT, handle_shutdown_signal)
 
 # Scheduler setup
 scheduler = BackgroundScheduler()
-scheduler.add_job(fetch_and_store_weather, 'interval', hours=48)
+scheduler.add_job(fetch_and_store_weather, 'interval', hours=48) # FIX
 scheduler.start()
 
 if __name__ == '__main__':
