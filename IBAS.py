@@ -407,8 +407,6 @@ def fetch_weather():
 #   .then(data => console.log(data))
 #   .catch(error => console.error('Error:', error));
 
-
-
 @app.route('/weather', methods=['POST'])
 def get_weather():
     data = request.json
@@ -472,7 +470,7 @@ signal.signal(signal.SIGINT, handle_shutdown_signal)
 
 # Scheduler setup
 scheduler = BackgroundScheduler()
-scheduler.add_job(fetch_and_store_weather, 'interval', hours=48) # FIX
+scheduler.add_job(fetch_and_store_weather, 'interval', hours=1)  # Run every 4 hours
 scheduler.start()
 
 if __name__ == '__main__':
