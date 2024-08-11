@@ -84,24 +84,36 @@ def check_weather_data_consistency(data):
     for field in fields:
         values = {source: sources[source][field] for source in sources}
 
-        # Perform pairwise comparisons and calculate deviations
-        deviations = {}
-        for source_name, value in values.items():
-            deviation_sum = 0
-            for other_source_name, other_value in values.items():
-                if source_name != other_source_name:
-                    deviation_sum += abs(value - other_value)
-            deviations[source_name] = deviation_sum
+        # Check if all three values are within the margin
+        all_within_margin = (
+            is_within_margin(values['tomorrowio'], values['visualcrossing'], margins[field]) and
+            is_within_margin(values['tomorrowio'], values['openweather'], margins[field]) and
+            is_within_margin(values['visualcrossing'], values['openweather'], margins[field])
+        )
 
-        # Identify the outlier as the one with the maximum deviation
-        outlier = max(deviations, key=deviations.get)
-        consistent_values = [value for source, value in values.items() if source != outlier]
+        if all_within_margin:
+            # If all three are within the margin, average all three
+            valid_data[field] = list(values.values())
+            logger.info(f"All sources within margin for field {field}. Using all values.")
+        else:
+            # Otherwise, calculate deviations and exclude the outlier
+            deviations = {}
+            for source_name, value in values.items():
+                deviation_sum = 0
+                for other_source_name, other_value in values.items():
+                    if source_name != other_source_name:
+                        deviation_sum += abs(value - other_value)
+                deviations[source_name] = deviation_sum
 
-        # Log the exclusion of the outlier
-        logger.info(f"Excluding outlier {outlier} with value {values[outlier]} for field {field}.")
+            # Identify the outlier as the one with the maximum deviation
+            outlier = max(deviations, key=deviations.get)
+            consistent_values = [value for source, value in values.items() if source != outlier]
 
-        # Store the consistent values for averaging
-        valid_data[field] = consistent_values
+            # Log the exclusion of the outlier
+            logger.info(f"Excluding outlier {outlier} with value {values[outlier]} for field {field}.")
+
+            # Store the consistent values for averaging
+            valid_data[field] = consistent_values
 
     return True, valid_data  # Always return True since we're retaining all fields
 
