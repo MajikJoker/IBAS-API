@@ -79,29 +79,29 @@ def check_weather_data_consistency(data):
 
     fields = ["temperature", "humidity", "pressure", "windSpeed", "cloudCover", "precipitation"]
 
-    valid_data = {field: [] for field in fields}
+    valid_data = {}
 
     for field in fields:
         values = {source: sources[source][field] for source in sources}
-        consistent_sources = []
 
-        # Perform pairwise comparisons
+        # Perform pairwise comparisons and calculate deviations
+        deviations = {}
         for source_name, value in values.items():
-            is_consistent = True
+            deviation_sum = 0
             for other_source_name, other_value in values.items():
-                if source_name != other_source_name and not is_within_margin(value, other_value, margins[field]):
-                    is_consistent = False
-                    logger.error(f"Inconsistency found in {field} between {source_name} ({value}) and {other_source_name} ({other_value})")
-            if is_consistent:
-                consistent_sources.append(value)
+                if source_name != other_source_name:
+                    deviation_sum += abs(value - other_value)
+            deviations[source_name] = deviation_sum
 
-        if consistent_sources:
-            valid_data[field] = consistent_sources
+        # Identify the outlier as the one with the maximum deviation
+        outlier = max(deviations, key=deviations.get)
+        consistent_values = [value for source, value in values.items() if source != outlier]
 
-        # Ensure that we always have a value by taking the average of the consistent sources
-        if not valid_data[field]:
-            logger.warning(f"No consistent data points found for {field}; using all available values for averaging.")
-            valid_data[field] = list(values.values())
+        # Log the exclusion of the outlier
+        logger.info(f"Excluding outlier {outlier} with value {values[outlier]} for field {field}.")
+
+        # Store the consistent values for averaging
+        valid_data[field] = consistent_values
 
     return True, valid_data  # Always return True since we're retaining all fields
 
