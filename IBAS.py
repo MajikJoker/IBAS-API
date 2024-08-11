@@ -80,44 +80,28 @@ def check_weather_data_consistency(data):
     fields = ["temperature", "humidity", "pressure", "windSpeed", "cloudCover", "precipitation"]
 
     # Initialize consistency tracking
-    consistency_tracker = {field: {source: True for source in sources} for field in fields}
+    valid_data = {field: [] for field in fields}
 
-    # Perform pairwise comparisons
-    source_names = list(sources.keys())
-    for field in fields:
-        for i in range(len(source_names)):
-            for j in range(i + 1, len(source_names)):
-                source_i = source_names[i]
-                source_j = source_names[j]
-                value_i = sources[source_i][field]
-                value_j = sources[source_j][field]
-                if not is_within_margin(value_i, value_j, margins[field]):
-                    # Mark both data points as inconsistent for this field
-                    consistency_tracker[field][source_i] = False
-                    consistency_tracker[field][source_j] = False
-                    logger.error(f"Inconsistency found in {field} between {source_i} ({value_i}) and {source_j} ({value_j})")
-
-    # Collect consistent data for averaging
-    valid_data = {}
-    fields_consistency = {}
     for field in fields:
         consistent_values = []
-        for source in sources:
-            if consistency_tracker[field][source]:
-                consistent_values.append(sources[source][field])
+        for source_name, source_data in sources.items():
+            consistent = True
+            for other_source_name, other_source_data in sources.items():
+                if source_name != other_source_name and not is_within_margin(source_data[field], other_source_data[field], margins[field]):
+                    consistent = False
+                    logger.error(f"Inconsistency found in {field} between {source_name} ({source_data[field]}) and {other_source_name} ({other_source_data[field]})")
+            if consistent:
+                consistent_values.append(source_data[field])
+        
         if len(consistent_values) >= 2:
             valid_data[field] = consistent_values
-            fields_consistency[field] = True
         else:
-            # Not enough consistent data points; mark field as inconsistent
-            fields_consistency[field] = False
             logger.warning(f"Field '{field}' marked as inconsistent due to insufficient consistent data points.")
 
-    # Determine overall consistency
-    overall_consistency = all(fields_consistency.values())
+    # Determine if there's enough valid data to proceed
+    overall_consistency = any(len(values) >= 2 for values in valid_data.values())
 
     return overall_consistency, valid_data
-
 
 # Function to test the MongoDB connection
 @app.before_first_request
@@ -308,7 +292,7 @@ def fetch_and_store_weather(capital=None):
 
     # Calculate averages for consistent fields and round them to 2 decimal places
     if valid_data:
-        averages = {field: round(sum(values) / len(values), 2) for field, values in valid_data.items()}
+        averages = {field: round(sum(values) / len(values), 2) for field, values in valid_data.items() if values}
         logger.info(f"Averages computed: {averages}")
     else:
         logger.error("No consistent data available for averaging.")
@@ -384,7 +368,6 @@ def fetch_and_store_weather(capital=None):
         is_valid = False
 
     return is_valid
-
 
 @app.route('/fetch-weather', methods=['GET'])
 def fetch_weather():
