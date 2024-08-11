@@ -93,13 +93,13 @@ def check_weather_data_consistency(data):
         ("pressure", is_within_margin(tomorrowio["pressure"], openweather["pressure"], margins["pressure"])),
         ("pressure", is_within_margin(visualcrossing["pressure"], openweather["pressure"], margins["pressure"])),
         
-        # ("windSpeed", is_within_margin(tomorrowio["windSpeed"], visualcrossing["windSpeed"], margins["windSpeed"])),
-        # ("windSpeed", is_within_margin(tomorrowio["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
-        # ("windSpeed", is_within_margin(visualcrossing["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
+        ("windSpeed", is_within_margin(tomorrowio["windSpeed"], visualcrossing["windSpeed"], margins["windSpeed"])),
+        ("windSpeed", is_within_margin(tomorrowio["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
+        ("windSpeed", is_within_margin(visualcrossing["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
         
-        # ("cloudCover", is_within_margin(tomorrowio["cloudCover"], visualcrossing["cloudCover"], margins["cloudCover"])),
-        # ("cloudCover", is_within_margin(tomorrowio["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
-        # ("cloudCover", is_within_margin(visualcrossing["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
+        ("cloudCover", is_within_margin(tomorrowio["cloudCover"], visualcrossing["cloudCover"], margins["cloudCover"])),
+        ("cloudCover", is_within_margin(tomorrowio["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
+        ("cloudCover", is_within_margin(visualcrossing["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
         
         ("precipitation", is_within_margin(tomorrowio["precipitation"], visualcrossing["precipitation"], margins["precipitation"])),
         ("precipitation", is_within_margin(tomorrowio["precipitation"], openweather["precipitation"], margins["precipitation"])),
@@ -125,7 +125,7 @@ def check_weather_data_consistency(data):
             elif check_name == "precipitation":
                 valid_data["precipitation"].extend([tomorrowio["precipitation"], visualcrossing["precipitation"], openweather["precipitation"]])
         else:
-            logger.error(f"Inconsistency found in {check_name}")
+            valid_data[check_name] = []  # Clear the field if inconsistency is found
 
     return all(result for _, result in checks), valid_data
 
@@ -317,8 +317,8 @@ def fetch_and_store_weather(capital=None):
         return False
     logger.info("Weather data is consistent")
 
-    # Calculate averages for consistent fields
-    averages = {field: sum(values) / len(values) for field, values in valid_data.items() if values}
+    # Calculate averages for consistent fields and round them to 2 decimal places
+    averages = {field: round(sum(values) / len(values), 2) for field, values in valid_data.items() if values}
     logger.info(f"Averages computed: {averages}")
 
     # Encrypt the averages
