@@ -398,6 +398,15 @@ def fetch_weather():
     except Exception as e:
         logger.exception("Exception occurred")
         return jsonify({"error": "Internal Server Error"}), 500
+    
+# To put in front end (still need to make it dynamic)
+# const capital = "Phnom Penh";
+# const encodedCapital = encodeURIComponent(capital);
+# fetch(`https://ibas.azurewebsites.net/fetch-weather?capital=${encodedCapital}`)
+#   .then(response => response.json())
+#   .then(data => console.log(data))
+#   .catch(error => console.error('Error:', error));
+
 
 
 @app.route('/weather', methods=['POST'])
