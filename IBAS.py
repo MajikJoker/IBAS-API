@@ -71,63 +71,52 @@ def check_weather_data_consistency(data):
     visualcrossing = data['visualcrossing']
     openweather = data['openweather']
 
-    valid_data = {
-        "temperature": [],
-        "humidity": [],
-        "pressure": [],
-        "windSpeed": [],
-        "cloudCover": [],
-        "precipitation": []
+    sources = {
+        'tomorrowio': tomorrowio,
+        'visualcrossing': visualcrossing,
+        'openweather': openweather
     }
 
-    checks = [
-        ("temperature", is_within_margin(tomorrowio["temperature"], visualcrossing["temperature"], margins["temperature"])),
-        ("temperature", is_within_margin(tomorrowio["temperature"], openweather["temperature"], margins["temperature"])),
-        ("temperature", is_within_margin(visualcrossing["temperature"], openweather["temperature"], margins["temperature"])),
-        
-        ("humidity", is_within_margin(tomorrowio["humidity"], visualcrossing["humidity"], margins["humidity"])),
-        ("humidity", is_within_margin(tomorrowio["humidity"], openweather["humidity"], margins["humidity"])),
-        ("humidity", is_within_margin(visualcrossing["humidity"], openweather["humidity"], margins["humidity"])),
-        
-        ("pressure", is_within_margin(tomorrowio["pressure"], visualcrossing["pressure"], margins["pressure"])),
-        ("pressure", is_within_margin(tomorrowio["pressure"], openweather["pressure"], margins["pressure"])),
-        ("pressure", is_within_margin(visualcrossing["pressure"], openweather["pressure"], margins["pressure"])),
-        
-        ("windSpeed", is_within_margin(tomorrowio["windSpeed"], visualcrossing["windSpeed"], margins["windSpeed"])),
-        ("windSpeed", is_within_margin(tomorrowio["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
-        ("windSpeed", is_within_margin(visualcrossing["windSpeed"], openweather["windSpeed"], margins["windSpeed"])),
-        
-        ("cloudCover", is_within_margin(tomorrowio["cloudCover"], visualcrossing["cloudCover"], margins["cloudCover"])),
-        ("cloudCover", is_within_margin(tomorrowio["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
-        ("cloudCover", is_within_margin(visualcrossing["cloudCover"], openweather["cloudCover"], margins["cloudCover"])),
-        
-        ("precipitation", is_within_margin(tomorrowio["precipitation"], visualcrossing["precipitation"], margins["precipitation"])),
-        ("precipitation", is_within_margin(tomorrowio["precipitation"], openweather["precipitation"], margins["precipitation"])),
-        ("precipitation", is_within_margin(visualcrossing["precipitation"], openweather["precipitation"], margins["precipitation"]))
-    ]
+    fields = ["temperature", "humidity", "pressure", "windSpeed", "cloudCover", "precipitation"]
 
-    for check_name, result in checks:
-        if not result:
-            logger.error(f"Inconsistency found in {check_name}: {result}")
+    # Initialize consistency tracking
+    consistency_tracker = {field: {source: True for source in sources} for field in fields}
 
-    for check_name, result in checks:
-        if result:
-            if check_name == "temperature":
-                valid_data["temperature"].extend([tomorrowio["temperature"], visualcrossing["temperature"], openweather["temperature"]])
-            elif check_name == "humidity":
-                valid_data["humidity"].extend([tomorrowio["humidity"], visualcrossing["humidity"], openweather["humidity"]])
-            elif check_name == "pressure":
-                valid_data["pressure"].extend([tomorrowio["pressure"], visualcrossing["pressure"], openweather["pressure"]])
-            elif check_name == "windSpeed":
-                valid_data["windSpeed"].extend([tomorrowio["windSpeed"], visualcrossing["windSpeed"], openweather["windSpeed"]])
-            elif check_name == "cloudCover":
-                valid_data["cloudCover"].extend([tomorrowio["cloudCover"], visualcrossing["cloudCover"], openweather["cloudCover"]])
-            elif check_name == "precipitation":
-                valid_data["precipitation"].extend([tomorrowio["precipitation"], visualcrossing["precipitation"], openweather["precipitation"]])
+    # Perform pairwise comparisons
+    source_names = list(sources.keys())
+    for field in fields:
+        for i in range(len(source_names)):
+            for j in range(i + 1, len(source_names)):
+                source_i = source_names[i]
+                source_j = source_names[j]
+                value_i = sources[source_i][field]
+                value_j = sources[source_j][field]
+                if not is_within_margin(value_i, value_j, margins[field]):
+                    # Mark both data points as inconsistent for this field
+                    consistency_tracker[field][source_i] = False
+                    consistency_tracker[field][source_j] = False
+                    logger.error(f"Inconsistency found in {field} between {source_i} ({value_i}) and {source_j} ({value_j})")
+
+    # Collect consistent data for averaging
+    valid_data = {}
+    fields_consistency = {}
+    for field in fields:
+        consistent_values = []
+        for source in sources:
+            if consistency_tracker[field][source]:
+                consistent_values.append(sources[source][field])
+        if len(consistent_values) >= 2:
+            valid_data[field] = consistent_values
+            fields_consistency[field] = True
         else:
-            valid_data[check_name] = []  # Clear the field if inconsistency is found
+            # Not enough consistent data points; mark field as inconsistent
+            fields_consistency[field] = False
+            logger.warning(f"Field '{field}' marked as inconsistent due to insufficient consistent data points.")
 
-    return all(result for _, result in checks), valid_data
+    # Determine overall consistency
+    overall_consistency = all(fields_consistency.values())
+
+    return overall_consistency, valid_data
 
 
 # Function to test the MongoDB connection
@@ -318,8 +307,12 @@ def fetch_and_store_weather(capital=None):
     logger.info("Weather data is consistent")
 
     # Calculate averages for consistent fields and round them to 2 decimal places
-    averages = {field: round(sum(values) / len(values), 2) for field, values in valid_data.items() if values}
-    logger.info(f"Averages computed: {averages}")
+    if valid_data:
+        averages = {field: round(sum(values) / len(values), 2) for field, values in valid_data.items()}
+        logger.info(f"Averages computed: {averages}")
+    else:
+        logger.error("No consistent data available for averaging.")
+        return False
 
     # Encrypt the averages
     key = generate_key()
