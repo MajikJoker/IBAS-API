@@ -379,6 +379,11 @@ def fetch_and_store_weather(capital=None):
 def fetch_weather():
     try:
         capital = request.args.get('capital', None)
+        
+        if capital:
+            # Normalize the capital name by stripping extra spaces and replacing multiple spaces with a single space
+            capital = ' '.join(capital.split())
+
         if not FETCH_WEATHER:
             logger.warning("FETCH_WEATHER is set to False")
             return jsonify({"message": "Weather data fetch is disabled"}), 403
@@ -393,6 +398,7 @@ def fetch_weather():
     except Exception as e:
         logger.exception("Exception occurred")
         return jsonify({"error": "Internal Server Error"}), 500
+
 
 @app.route('/weather', methods=['POST'])
 def get_weather():
