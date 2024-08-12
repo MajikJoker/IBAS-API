@@ -203,7 +203,7 @@ def setup():
     for domain in domains:
         signer = SimpleSigner(domain)
         signer.generate_keys()
-        pri_key, pub_key = signer.export_keys()  # Switched the order here to correct the labeling
+        pri_key, pub_key = signer.export_keys()
         keys[f'pub_{domain.replace(".", "__dot__")}_PEM'] = pub_key
         keys[f'pri_{domain.replace(".", "__dot__")}_PEM'] = pri_key
     
@@ -217,9 +217,8 @@ def setup():
     created_at = datetime.now(timezone.utc)
     expires_at = created_at + timedelta(days=365)
     
-    # Create the new client object
+    # Create the new client object without manually setting the _id field
     new_client = {
-        "_id": ObjectId(),  # Generate a new ObjectId for the client
         "client_name": username,
         "api_key": api_key,
         "permissions": ["get-weather"],
@@ -234,7 +233,7 @@ def setup():
     
     # Update the document in MongoDB
     db.Customer_API_Keys.update_one(
-        {"_id": client_document["_id"]}, 
+        {"_id": client_document.get("_id")},
         {"$set": {"clients": client_document["clients"]}},
         upsert=True
     )
