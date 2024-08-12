@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from flask_cors import CORS
 import uuid
 from datetime import timedelta
+from bson import ObjectId
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -177,6 +178,7 @@ def setup():
     if not client_document:
         # If the client doesn't exist, create a new entry in the "clients" array
         client_document = {
+            "_id": ObjectId(),  # Generate a new ObjectId for the document
             "clients": []
         }
     
@@ -219,7 +221,6 @@ def setup():
     
     # Create the new client object
     new_client = {
-        "_id": ObjectId(),  # Generate a new ObjectId for the client
         "client_name": username,
         "api_key": api_key,
         "permissions": ["get-weather"],
