@@ -176,11 +176,8 @@ def setup():
     client_document = db.Customer_API_Keys.find_one({"clients.client_name": username})
     
     if not client_document:
-        # If the client doesn't exist, create a new entry in the "clients" array
-        client_document = {
-            "_id": ObjectId(),  # Generate a new ObjectId for the document
-            "clients": []
-        }
+        # If the client document does not exist, return an error
+        return jsonify({"error": "Client document not found. Please create a document first."}), 404
     
     # Check if the client already exists in the "clients" array
     existing_client = None
@@ -205,7 +202,7 @@ def setup():
     for domain in domains:
         signer = SimpleSigner(domain)
         signer.generate_keys()
-        pri_key, pub_key = signer.export_keys()  # Switched the order here to correct the labeling
+        pri_key, pub_key = signer.export_keys()
         keys[f'pub_{domain.replace(".", "__dot__")}_PEM'] = pub_key
         keys[f'pri_{domain.replace(".", "__dot__")}_PEM'] = pri_key
     
@@ -230,14 +227,10 @@ def setup():
         "expires_at": expires_at.isoformat()
     }
     
-    # Append the new client to the "clients" array
-    client_document["clients"].append(new_client)
-    
-    # Update the document in MongoDB
+    # Append the new client to the "clients" array within the existing document
     db.Customer_API_Keys.update_one(
         {"_id": client_document["_id"]}, 
-        {"$set": {"clients": client_document["clients"]}},
-        upsert=True
+        {"$push": {"clients": new_client}}
     )
     
     return jsonify({"domains": domains, "keys": keys, "api_key": api_key}), 200
