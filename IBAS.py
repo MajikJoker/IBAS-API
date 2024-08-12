@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
 from flask_cors import CORS
+import uuid
+from datetime import timedelta
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -190,9 +192,32 @@ def setup():
         keys[f'pub_{domain.replace(".", "__dot__")}_PEM'] = pub_key
         keys[f'pri_{domain.replace(".", "__dot__")}_PEM'] = pri_key
     
+    # Update the collection with the new keys
     collection.update_one({'_id': document['_id']}, {'$set': keys})
     
-    return jsonify({"domains": domains, "keys": keys}), 200
+    # Generate API key for the customer
+    api_key = str(uuid.uuid4())  # Generate a random UUID as the API key
+    
+    # Define the current time and expiry date (1 year from now)
+    created_at = datetime.now(timezone.utc)
+    expires_at = created_at + timedelta(days=365)
+    
+    # Create the API key document
+    api_key_document = {
+        "client_name": username,
+        "api_key": api_key,
+        "permissions": ["get-weather"],
+        "usage_limit": 1000,
+        "requests_made": 0,
+        "created_at": created_at.isoformat(),
+        "expires_at": expires_at.isoformat()
+    }
+    
+    # Insert the API key document into the Customer_API_Keys collection
+    api_keys_collection = db.Customer_API_Keys
+    api_keys_collection.insert_one(api_key_document)
+    
+    return jsonify({"domains": domains, "keys": keys, "api_key": api_key}), 200
 
 def fetch_weather_openweather(lat, lon):
     params = {
@@ -470,7 +495,7 @@ signal.signal(signal.SIGINT, handle_shutdown_signal)
 
 # Scheduler setup
 scheduler = BackgroundScheduler()
-scheduler.add_job(fetch_and_store_weather, 'interval', hours=1, kwargs={'capital': 'Singapore'})  # Example with 'Singapore'
+scheduler.add_job(fetch_and_store_weather, 'interval', hours=12, kwargs={'capital': 'Singapore'})  # Example with 'Singapore'
 scheduler.start()
 
 if __name__ == '__main__':
