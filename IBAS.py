@@ -172,23 +172,39 @@ def setup():
     if not username:
         return jsonify({"error": "Username is required"}), 400
     
-    # Find the correct document that stores the "clients" array
+    # Find the document that stores the "clients" array
     client_document = db.Customer_API_Keys.find_one({"clients.client_name": username})
-    
-    if not client_document:
-        # If the client document does not exist, return an error
-        return jsonify({"error": "Client document not found. Please create a document first."}), 404
-    
-    # Check if the client already exists in the "clients" array
-    existing_client = None
-    for client in client_document["clients"]:
-        if client["client_name"] == username:
-            existing_client = client
-            break
-    
-    if existing_client:
-        return jsonify({"error": "Client already exists"}), 400
 
+    if client_document:
+        # Check if the client already exists in the "clients" array
+        for client in client_document["clients"]:
+            if client["client_name"] == username:
+                return jsonify({"error": "Client already exists"}), 400
+    else:
+        # Generate API key for the customer
+        api_key = str(uuid.uuid4())  # Generate a random UUID as the API key
+        
+        # Define the current time and expiry date (1 year from now)
+        created_at = datetime.now(timezone.utc)
+        expires_at = created_at + timedelta(days=365)
+        
+        # Create the new client object
+        new_client = {
+            "client_name": username,
+            "api_key": api_key,
+            "permissions": ["get-weather"],
+            "usage_limit": 1000,
+            "requests_made": 0,
+            "created_at": created_at.isoformat(),
+            "expires_at": expires_at.isoformat()
+        }
+        
+        # Append the new client to the "clients" array within the existing document
+        db.Customer_API_Keys.update_one(
+            {"_id": client_document["_id"]}, 
+            {"$push": {"clients": new_client}}
+        )
+    
     # Generate API keys and keys for domains
     collection = customerDB[username]
     document = collection.find_one()
@@ -208,30 +224,6 @@ def setup():
     
     # Update the collection with the new keys
     collection.update_one({'_id': document['_id']}, {'$set': keys})
-    
-    # Generate API key for the customer
-    api_key = str(uuid.uuid4())  # Generate a random UUID as the API key
-    
-    # Define the current time and expiry date (1 year from now)
-    created_at = datetime.now(timezone.utc)
-    expires_at = created_at + timedelta(days=365)
-    
-    # Create the new client object
-    new_client = {
-        "client_name": username,
-        "api_key": api_key,
-        "permissions": ["get-weather"],
-        "usage_limit": 1000,
-        "requests_made": 0,
-        "created_at": created_at.isoformat(),
-        "expires_at": expires_at.isoformat()
-    }
-    
-    # Append the new client to the "clients" array within the existing document
-    db.Customer_API_Keys.update_one(
-        {"_id": client_document["_id"]}, 
-        {"$push": {"clients": new_client}}
-    )
     
     return jsonify({"domains": domains, "keys": keys, "api_key": api_key}), 200
 
