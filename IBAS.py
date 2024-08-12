@@ -171,12 +171,27 @@ def setup():
     if not username:
         return jsonify({"error": "Username is required"}), 400
     
-    collection_name = username
+    # Find the correct document that stores the "clients" array
+    client_document = db.Customer_API_Keys.find_one({"clients.client_name": username})
     
-    if collection_name not in customerDB.list_collection_names():
-        return jsonify({"error": "Collection not found"}), 404
+    if not client_document:
+        # If the client doesn't exist, create a new entry in the "clients" array
+        client_document = {
+            "clients": []
+        }
     
-    collection = customerDB[collection_name]
+    # Check if the client already exists in the "clients" array
+    existing_client = None
+    for client in client_document["clients"]:
+        if client["client_name"] == username:
+            existing_client = client
+            break
+    
+    if existing_client:
+        return jsonify({"error": "Client already exists"}), 400
+
+    # Generate API keys and keys for domains
+    collection = customerDB[username]
     document = collection.find_one()
     
     if not document:
@@ -202,8 +217,9 @@ def setup():
     created_at = datetime.now(timezone.utc)
     expires_at = created_at + timedelta(days=365)
     
-    # Create the API key document
-    api_key_document = {
+    # Create the new client object
+    new_client = {
+        "_id": ObjectId(),  # Generate a new ObjectId for the client
         "client_name": username,
         "api_key": api_key,
         "permissions": ["get-weather"],
@@ -213,9 +229,15 @@ def setup():
         "expires_at": expires_at.isoformat()
     }
     
-    # Insert the API key document into the Customer_API_Keys collection
-    api_keys_collection = db.Customer_API_Keys
-    api_keys_collection.insert_one(api_key_document)
+    # Append the new client to the "clients" array
+    client_document["clients"].append(new_client)
+    
+    # Update the document in MongoDB
+    db.Customer_API_Keys.update_one(
+        {"_id": client_document["_id"]}, 
+        {"$set": {"clients": client_document["clients"]}},
+        upsert=True
+    )
     
     return jsonify({"domains": domains, "keys": keys, "api_key": api_key}), 200
 
