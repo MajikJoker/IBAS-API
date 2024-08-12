@@ -17,6 +17,7 @@ from flask_cors import CORS
 import uuid
 from datetime import timedelta
 from bson import ObjectId
+from functools import wraps
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -120,6 +121,37 @@ def check_weather_data_consistency(data):
 
     return True, valid_data  # Always return True since we're retaining all fields
 
+# Function to validate API keys and check permissions
+def validate_api_key(permission_required):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            api_key = request.args.get('apikey')
+            if not api_key:
+                return jsonify({"error": "API key is required"}), 401
+
+            # Check in Admin collection first
+            admin_doc = db.Admin_API_Keys.find_one({"admins.api_key": api_key})
+            if admin_doc:
+                admin = next((admin for admin in admin_doc['admins'] if admin['api_key'] == api_key), None)
+                if admin and permission_required in admin['permissions']:
+                    return f(*args, **kwargs)
+                else:
+                    return jsonify({"error": "Permission denied"}), 403
+            
+            # If not found in Admin, check in Client collection
+            client_doc = db.Customer_API_Keys.find_one({"clients.api_key": api_key})
+            if client_doc:
+                client = next((client for client in client_doc['clients'] if client['api_key'] == api_key), None)
+                if client and permission_required in client['permissions']:
+                    return f(*args, **kwargs)
+                else:
+                    return jsonify({"error": "Permission denied"}), 403
+
+            return jsonify({"error": "Invalid API key"}), 401
+        return decorated_function
+    return decorator
+
 # Function to test the MongoDB connection
 @app.before_first_request
 def test_db_connection():
@@ -166,6 +198,7 @@ class SimpleSigner:
         return True
 
 @app.route('/setup', methods=['GET'])
+@validate_api_key(permission_required='setup')
 def setup():
     username = request.args.get('username')
     
@@ -424,6 +457,7 @@ def fetch_and_store_weather(capital=None):
     return is_valid
 
 @app.route('/fetch-weather', methods=['GET'])
+@validate_api_key(permission_required='fetch-weather')
 def fetch_weather():
     try:
         capital = request.args.get('capital', None)
@@ -446,16 +480,9 @@ def fetch_weather():
     except Exception as e:
         logger.exception("Exception occurred")
         return jsonify({"error": "Internal Server Error"}), 500
-    
-# To put in front end (still need to make it dynamic)
-# const capital = "Phnom Penh";
-# const encodedCapital = encodeURIComponent(capital);
-# fetch(`https://ibas.azurewebsites.net/fetch-weather?capital=${encodedCapital}`)
-#   .then(response => response.json())
-#   .then(data => console.log(data))
-#   .catch(error => console.error('Error:', error));
 
 @app.route('/weather', methods=['POST'])
+@validate_api_key(permission_required='get-weather')
 def get_weather():
     data = request.json
     latitude = data['latitude']
@@ -489,6 +516,7 @@ def get_weather():
         }), response.status_code
 
 @app.route('/get-weather', methods=['GET'])
+@validate_api_key(permission_required='get-weather')
 def get_stored_weather():
     # Fetch the latest weather record
     record = weatherRecords.find_one(sort=[("timestamp", -1)])
