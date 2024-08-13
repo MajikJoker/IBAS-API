@@ -388,21 +388,33 @@ def fetch_and_store_weather(capital=None, client_name=None):
     encrypted_transit_key = encrypt_data(transit_key, transit_key)  # Encrypt with itself or another suitable method
     logger.info(f"Generated and encrypted transit key")
 
-    # Store the encrypted transit key in the new Transit_Key database
+    # Insert the weather record and get the inserted ID
+    user_db = client.get_database('Weather_Record')
+    user_collection = user_db[f'{client_name}_Data']
+
+    record = {
+        "data": encrypted_data,
+        "hash": data_hash,
+        "agg_sig": agg_sig.hex(),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    logger.info(f"Record to be inserted: {record}")
+
+    try:
+        result_record = user_collection.insert_one(record)
+        logger.info(f"Inserted record ID: {result_record.inserted_id}")
+    except Exception as e:
+        logger.error(f"Error inserting record into user's collection: {e}")
+
+    # Store the encrypted transit key linked with the weather record ID
     transit_key_collection = transit_key_db[f"{client_name}_transitKeys"]
-    transit_key_collection.update_one(
-        {"client_name": client_name},
-        {"$set": {"key": encrypted_transit_key}},
-        upsert=True
-    )
-    logger.info(f"Stored encrypted transit key for client '{client_name}' in Transit_Key database")
-
-    # Encrypt the weather data using the transit key
-    encrypted_data = encrypt_data(averages, transit_key)
-    logger.info(f"Encrypted weather data: {encrypted_data}")
-
-    data_hash = get_hashed_data(encrypted_data)
-    logger.info(f"Data hash: {data_hash}")
+    transit_key_doc = {
+        "weather_record_id": result_record.inserted_id,
+        "client_name": client_name,
+        "key": encrypted_transit_key
+    }
+    transit_key_collection.insert_one(transit_key_doc)
+    logger.info(f"Stored encrypted transit key for weather record ID {result_record.inserted_id} in Transit_Key database")
 
     domain_docs = customerDB[client_name].find_one()
     if not domain_docs:
@@ -439,24 +451,6 @@ def fetch_and_store_weather(capital=None, client_name=None):
 
         agg_sig = SimpleSigner.aggregate_signatures(signatures)
         logger.info(f"Aggregate signature created")
-
-        # Insert the record into the specific user's collection
-        user_db = client.get_database('Weather_Record')
-        user_collection = user_db[f'{client_name}_Data']
-
-        record = {
-            "data": encrypted_data,
-            "hash": data_hash,
-            "agg_sig": agg_sig.hex(),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-        logger.info(f"Record to be inserted: {record}")
-
-        try:
-            result_record = user_collection.insert_one(record)
-            logger.info(f"Inserted record ID: {result_record.inserted_id}")
-        except Exception as e:
-            logger.error(f"Error inserting record into user's collection: {e}")
 
         is_valid = SimpleSigner.verify_aggregate(identities, encrypted_data.encode(), agg_sig, public_keys)
         logger.info(f"Aggregate signature valid: {is_valid}")
