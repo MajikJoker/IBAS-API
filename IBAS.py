@@ -466,15 +466,28 @@ def fetch_and_store_weather(capital=None, client_name=None):
 def fetch_weather():
     try:
         capital = request.args.get('capital', None)
-        client_name = request.args.get('client_name', None)
+        api_key = request.args.get('apikey', None)
 
         if capital:
             # Normalize the capital name by stripping extra spaces and replacing multiple spaces with a single space
             capital = ' '.join(capital.split())
 
-        if not client_name:
-            logger.error("Client name is required")
-            return jsonify({"error": "Client name is required"}), 400
+        if not api_key:
+            logger.error("API key is required")
+            return jsonify({"error": "API key is required"}), 400
+
+        # Look up the client_name associated with the given API key
+        client_document = db.Customer_API_Keys.find_one({"clients.api_key": api_key})
+        if not client_document:
+            logger.error("Invalid API key provided")
+            return jsonify({"error": "Invalid API key"}), 401
+
+        client = next((client for client in client_document['clients'] if client['api_key'] == api_key), None)
+        if not client:
+            logger.error("Client not found for the provided API key")
+            return jsonify({"error": "Client not found"}), 401
+
+        client_name = client['client_name']
 
         if not FETCH_WEATHER:
             logger.warning("FETCH_WEATHER is set to False")
