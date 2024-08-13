@@ -346,7 +346,7 @@ def fetch_weather_visualcrossing(lat, lon):
         logger.error(f"VisualCrossing API request failed with status code {response.status_code}")
         return None
     
-def fetch_and_store_weather(capital=None, client_name=None):
+def fetch_and_store_weather(capital=None, client_name=None, transit_key=None):
     if not FETCH_WEATHER:
         logger.warning("FETCH_WEATHER is set to False")
         return False
@@ -385,9 +385,8 @@ def fetch_and_store_weather(capital=None, client_name=None):
     averages = {field: round(sum(values) / len(values), 2) for field, values in valid_data.items()}
     logger.info(f"Averages computed: {averages}")
 
-    # Encrypt the averages
-    key = generate_key()
-    encrypted_data = encrypt_data(averages, key)
+    # Encrypt the averages using the transit key
+    encrypted_data = encrypt_data(averages, transit_key)
     logger.info(f"Encrypted data: {encrypted_data}")
 
     data_hash = get_hashed_data(encrypted_data)
@@ -448,7 +447,7 @@ def fetch_and_store_weather(capital=None, client_name=None):
             logger.error(f"Error inserting record into user's collection: {e}")
 
         try:
-            result_key = keysCollection.insert_one({"key": key})
+            result_key = keysCollection.insert_one({"key": transit_key})
             logger.info(f"Inserted key ID: {result_key.inserted_id}")
         except Exception as e:
             logger.error(f"Error inserting key: {e}")
@@ -476,7 +475,7 @@ def fetch_weather():
             logger.error("API key is required")
             return jsonify({"error": "API key is required"}), 400
 
-        # Look up the client_name associated with the given API key
+        # Look up the client_name and transit key associated with the given API key
         client_document = db.Customer_API_Keys.find_one({"clients.api_key": api_key})
         if not client_document:
             logger.error("Invalid API key provided")
@@ -489,11 +488,19 @@ def fetch_weather():
 
         client_name = client['client_name']
 
+        # Fetch the transit key associated with this client
+        transit_key_document = db.transitKeys.find_one({"client_name": client_name})
+        if not transit_key_document:
+            logger.error(f"Transit key not found for client '{client_name}'")
+            return jsonify({"error": "Transit key not found for the provided client"}), 404
+
+        transit_key = transit_key_document.get("key")
+
         if not FETCH_WEATHER:
             logger.warning("FETCH_WEATHER is set to False")
             return jsonify({"message": "Weather data fetch is disabled"}), 403
 
-        is_valid = fetch_and_store_weather(capital, client_name)
+        is_valid = fetch_and_store_weather(capital, client_name, transit_key)
         if is_valid:
             logger.info(f"Weather data for capital '{capital}' fetched and stored successfully for client '{client_name}'")
             return jsonify({"message": "Weather data fetched and stored successfully", "valid": is_valid}), 200
