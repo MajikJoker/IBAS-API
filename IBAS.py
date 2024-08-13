@@ -388,14 +388,17 @@ def fetch_and_store_weather(capital=None, client_name=None):
     encrypted_transit_key = encrypt_data(transit_key, transit_key)  # Encrypt with itself or another suitable method
     logger.info(f"Generated and encrypted transit key")
 
+    # Encrypt the weather data using the transit key
+    encrypted_data = encrypt_data(averages, transit_key)
+    logger.info(f"Encrypted weather data: {encrypted_data}")
+
     # Insert the weather record and get the inserted ID
     user_db = client.get_database('Weather_Record')
     user_collection = user_db[f'{client_name}_Data']
 
     record = {
         "data": encrypted_data,
-        "hash": data_hash,
-        "agg_sig": agg_sig.hex(),
+        "hash": get_hashed_data(encrypted_data),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
     logger.info(f"Record to be inserted: {record}")
@@ -405,6 +408,7 @@ def fetch_and_store_weather(capital=None, client_name=None):
         logger.info(f"Inserted record ID: {result_record.inserted_id}")
     except Exception as e:
         logger.error(f"Error inserting record into user's collection: {e}")
+        return False
 
     # Store the encrypted transit key linked with the weather record ID
     transit_key_collection = transit_key_db[f"{client_name}_transitKeys"]
