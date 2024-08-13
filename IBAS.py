@@ -346,7 +346,7 @@ def fetch_weather_visualcrossing(lat, lon):
         logger.error(f"VisualCrossing API request failed with status code {response.status_code}")
         return None
     
-def fetch_and_store_weather(capital=None):
+def fetch_and_store_weather(capital=None, client_name=None):
     if not FETCH_WEATHER:
         logger.warning("FETCH_WEATHER is set to False")
         return False
@@ -393,14 +393,14 @@ def fetch_and_store_weather(capital=None):
     data_hash = get_hashed_data(encrypted_data)
     logger.info(f"Data hash: {data_hash}")
 
-    domain_docs = customerDB.WeatherNodeInitiative.find_one()
+    domain_docs = customerDB[client_name].find_one()
     if not domain_docs:
-        logger.error("No domain documents found in WeatherNodeInitiative")
+        logger.error(f"No domain documents found for client '{client_name}'")
         return False
     
     domains = domain_docs.get('domain', {}).keys()
     if not domains:
-        logger.error("No domains found in domain documents")
+        logger.error(f"No domains found in domain documents for client '{client_name}'")
         return False
 
     identities = []
@@ -429,18 +429,23 @@ def fetch_and_store_weather(capital=None):
         agg_sig = SimpleSigner.aggregate_signatures(signatures)
         logger.info(f"Aggregate signature created")
 
+        # Insert the record into the specific user's collection
+        user_db = client.get_database('Weather_Record')
+        user_collection = user_db[f'{client_name}_Data']
+
         record = {
             "data": encrypted_data,
             "hash": data_hash,
-            "agg_sig": agg_sig.hex()
+            "agg_sig": agg_sig.hex(),
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         logger.info(f"Record to be inserted: {record}")
 
         try:
-            result_record = weatherRecords.insert_one(record)
+            result_record = user_collection.insert_one(record)
             logger.info(f"Inserted record ID: {result_record.inserted_id}")
         except Exception as e:
-            logger.error(f"Error inserting record: {e}")
+            logger.error(f"Error inserting record into user's collection: {e}")
 
         try:
             result_key = keysCollection.insert_one({"key": key})
@@ -461,18 +466,23 @@ def fetch_and_store_weather(capital=None):
 def fetch_weather():
     try:
         capital = request.args.get('capital', None)
-        
+        client_name = request.args.get('client_name', None)
+
         if capital:
             # Normalize the capital name by stripping extra spaces and replacing multiple spaces with a single space
             capital = ' '.join(capital.split())
+
+        if not client_name:
+            logger.error("Client name is required")
+            return jsonify({"error": "Client name is required"}), 400
 
         if not FETCH_WEATHER:
             logger.warning("FETCH_WEATHER is set to False")
             return jsonify({"message": "Weather data fetch is disabled"}), 403
 
-        is_valid = fetch_and_store_weather(capital)
+        is_valid = fetch_and_store_weather(capital, client_name)
         if is_valid:
-            logger.info(f"Weather data for capital '{capital}' fetched and stored successfully")
+            logger.info(f"Weather data for capital '{capital}' fetched and stored successfully for client '{client_name}'")
             return jsonify({"message": "Weather data fetched and stored successfully", "valid": is_valid}), 200
         else:
             logger.warning(f"Weather data for capital '{capital}' fetched but signature invalid or capital not found")
