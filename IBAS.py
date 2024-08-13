@@ -42,7 +42,6 @@ MONGO_URI = os.environ.get("AZURE_COSMOS_CONNECTIONSTRING")
 client = MongoClient(MONGO_URI)
 db = client.get_database('ibas-server')
 weatherRecords = db.weather_records
-keysCollection = db.transitKeys
 customerDB = client.get_database('Customers')
 
 # Load capitals data from CSV
@@ -345,7 +344,7 @@ def fetch_weather_visualcrossing(lat, lon):
         logger.error(f"VisualCrossing API request failed with status code {response.status_code}")
         return None
     
-def fetch_and_store_weather(capital=None, client_name=None, transit_key=None):
+def fetch_and_store_weather(capital=None, client_name=None):
 
     if capital:
         capital = capital.strip().lower()
@@ -381,9 +380,23 @@ def fetch_and_store_weather(capital=None, client_name=None, transit_key=None):
     averages = {field: round(sum(values) / len(values), 2) for field, values in valid_data.items()}
     logger.info(f"Averages computed: {averages}")
 
-    # Encrypt the averages using the transit key
+    # Generate and encrypt the transit key
+    transit_key = generate_key()
+    encrypted_transit_key = encrypt_data(transit_key, transit_key)  # Encrypt with itself or another suitable method
+    logger.info(f"Generated and encrypted transit key")
+
+    # Store the encrypted transit key in the client-specific collection
+    transit_key_collection = db[f"{client_name}_transitKeys"]
+    transit_key_collection.update_one(
+        {"client_name": client_name},
+        {"$set": {"key": encrypted_transit_key}},
+        upsert=True
+    )
+    logger.info(f"Stored encrypted transit key for client '{client_name}'")
+
+    # Encrypt the weather data using the transit key
     encrypted_data = encrypt_data(averages, transit_key)
-    logger.info(f"Encrypted data: {encrypted_data}")
+    logger.info(f"Encrypted weather data: {encrypted_data}")
 
     data_hash = get_hashed_data(encrypted_data)
     logger.info(f"Data hash: {data_hash}")
@@ -442,12 +455,6 @@ def fetch_and_store_weather(capital=None, client_name=None, transit_key=None):
         except Exception as e:
             logger.error(f"Error inserting record into user's collection: {e}")
 
-        try:
-            result_key = keysCollection.insert_one({"key": transit_key})
-            logger.info(f"Inserted key ID: {result_key.inserted_id}")
-        except Exception as e:
-            logger.error(f"Error inserting key: {e}")
-
         is_valid = SimpleSigner.verify_aggregate(identities, encrypted_data.encode(), agg_sig, public_keys)
         logger.info(f"Aggregate signature valid: {is_valid}")
     except (ValueError, TypeError) as e:
@@ -484,15 +491,8 @@ def fetch_weather():
 
         client_name = client['client_name']
 
-        # Fetch the transit key associated with this client from the correct collection
-        transit_key_document = db[f"{client_name}_transitKeys"].find_one({"client_name": client_name})
-        if not transit_key_document:
-            logger.error(f"Transit key not found for client '{client_name}'")
-            return jsonify({"error": "Transit key not found for the provided client"}), 404
-
-        transit_key = transit_key_document.get("key")
-
-        is_valid = fetch_and_store_weather(capital, client_name, transit_key)
+        # Fetch and store weather data, generate and store the transit key
+        is_valid = fetch_and_store_weather(capital, client_name)
         if is_valid:
             logger.info(f"Weather data for capital '{capital}' fetched and stored successfully for client '{client_name}'")
             return jsonify({"message": "Weather data fetched and stored successfully", "valid": is_valid}), 200
