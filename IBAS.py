@@ -471,7 +471,7 @@ def fetch_weather():
             logger.error("API key is required")
             return jsonify({"error": "API key is required"}), 400
 
-        # Look up the client_name and transit key associated with the given API key
+        # Look up the client_name associated with the given API key
         client_document = db.Customer_API_Keys.find_one({"clients.api_key": api_key})
         if not client_document:
             logger.error("Invalid API key provided")
@@ -484,8 +484,8 @@ def fetch_weather():
 
         client_name = client['client_name']
 
-        # Fetch the transit key associated with this client
-        transit_key_document = db.transitKeys.find_one({"client_name": client_name})
+        # Fetch the transit key associated with this client from the correct collection
+        transit_key_document = db[f"{client_name}_transitKeys"].find_one({"client_name": client_name})
         if not transit_key_document:
             logger.error(f"Transit key not found for client '{client_name}'")
             return jsonify({"error": "Transit key not found for the provided client"}), 404
