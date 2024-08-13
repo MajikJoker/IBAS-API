@@ -11,7 +11,7 @@ from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
 from Crypto.Signature import pkcs1_15
 from dotenv import load_dotenv
-from apscheduler.schedulers.background import BackgroundScheduler
+# from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
 from flask_cors import CORS
 import uuid
@@ -37,7 +37,6 @@ TOMORROWIO_API_URL = os.environ.get("TOMORROWIO_API_URL")
 VISUALCROSSING_API_KEY = os.environ.get("VISUALCROSSING_API_KEY")
 VISUALCROSSING_API_URL = os.environ.get("VISUALCROSSING_API_URL")
 MONGO_URI = os.environ.get("AZURE_COSMOS_CONNECTIONSTRING")
-FETCH_WEATHER = os.environ.get("FETCH_WEATHER") == 'True'
 
 # MongoDB setup
 client = MongoClient(MONGO_URI)
@@ -306,7 +305,7 @@ def fetch_weather_tomorrowio(lat, lon):
         "units": "metric"
     }
     response = requests.get(TOMORROWIO_API_URL, params=params)
-    if response.status_code == 200:
+    if response.status_code == 200):
         data = response.json()
         simplified_data = {
             "temperature": data['timelines']['minutely'][0]['values']['temperature'],
@@ -329,7 +328,7 @@ def fetch_weather_visualcrossing(lat, lon):
         "unitGroup": "metric"
     }
     response = requests.get(VISUALCROSSING_API_URL, params=params)
-    if response.status_code == 200:
+    if response.status_code == 200):
         data = response.json()
         day = data['days'][0]
         simplified_data = {
@@ -347,9 +346,6 @@ def fetch_weather_visualcrossing(lat, lon):
         return None
     
 def fetch_and_store_weather(capital=None, client_name=None, transit_key=None):
-    if not FETCH_WEATHER:
-        logger.warning("FETCH_WEATHER is set to False")
-        return False
 
     if capital:
         capital = capital.strip().lower()
@@ -496,10 +492,6 @@ def fetch_weather():
 
         transit_key = transit_key_document.get("key")
 
-        if not FETCH_WEATHER:
-            logger.warning("FETCH_WEATHER is set to False")
-            return jsonify({"message": "Weather data fetch is disabled"}), 403
-
         is_valid = fetch_and_store_weather(capital, client_name, transit_key)
         if is_valid:
             logger.info(f"Weather data for capital '{capital}' fetched and stored successfully for client '{client_name}'")
@@ -560,75 +552,41 @@ def fetch_only():
         logger.exception("Exception occurred")
         return jsonify({"error": "Internal Server Error"}), 500
 
-@app.route('/weather', methods=['POST'])
-@validate_api_key(permission_required='get-weather')
-def get_weather():
-    data = request.json
-    latitude = data['latitude']
-    longitude = data['longitude']
+# @app.route('/get-weather', methods=['GET'])
+# @validate_api_key(permission_required='get-weather')
+# def get_stored_weather():
+#     # Fetch the latest weather record
+#     record = weatherRecords.find_one(sort=[("timestamp", -1)])
+#     key_record = keysCollection.find_one(sort=[("_id", -1)])  # Assuming the key collection's latest key is what you need
 
-    params = {
-        "lat": latitude,
-        "lon": longitude,
-        "appid": OPENWEATHER_API_KEY,
-        "units": "metric"
-    }
+#     if not record or not key_record:
+#         return jsonify({"error": "No weather data available"}), 404
 
-    response = requests.get(OPENWEATHER_API_URL, params=params)
+#     encrypted_data = record["data"]
+#     stored_hash = record["hash"]
+#     key = key_record["key"]
 
-    if response.status_code == 200:
-        weather_data = response.json()
-        simplified_data = {
-            "temperature": weather_data["main"]["temp"],
-            "temperatureApparent": weather_data["main"]["feels_like"],
-            "humidity": weather_data["main"]["humidity"],
-            "pressure": weather_data["main"]["pressure"],
-            "windSpeed": weather_data["wind"]["speed"],
-            "cloudCover": weather_data["clouds"]["all"],
-            "precipitation": weather_data.get("rain", {}).get("1h", 0)
-        }
-        return jsonify(simplified_data)
-    else:
-        return jsonify({
-            "error": f"API request failed with status code {response.status_code}",
-            "message": response.text
-        }), response.status_code
+#     if not check_hash(encrypted_data, stored_hash):
+#         return jsonify({"error": "Data integrity compromised"}), 500
 
-@app.route('/get-weather', methods=['GET'])
-@validate_api_key(permission_required='get-weather')
-def get_stored_weather():
-    # Fetch the latest weather record
-    record = weatherRecords.find_one(sort=[("timestamp", -1)])
-    key_record = keysCollection.find_one(sort=[("_id", -1)])  # Assuming the key collection's latest key is what you need
+#     weather_data = decrypt_data(encrypted_data, key)
 
-    if not record or not key_record:
-        return jsonify({"error": "No weather data available"}), 404
-
-    encrypted_data = record["data"]
-    stored_hash = record["hash"]
-    key = key_record["key"]
-
-    if not check_hash(encrypted_data, stored_hash):
-        return jsonify({"error": "Data integrity compromised"}), 500
-
-    weather_data = decrypt_data(encrypted_data, key)
-
-    return jsonify(weather_data), 200
+#     return jsonify(weather_data), 200
 
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
-    scheduler.shutdown()  # Shutdown the scheduler gracefully
+    # scheduler.shutdown()  # Shutdown the scheduler gracefully
     sys.exit(0)
 
 signal.signal(signal.SIGTERM, handle_shutdown_signal)
 signal.signal(signal.SIGINT, handle_shutdown_signal)
 
 # Scheduler setup
-scheduler = BackgroundScheduler()
-scheduler.add_job(fetch_and_store_weather, 'interval', hours=12, kwargs={'capital': 'Singapore'})  # Example with 'Singapore'
-scheduler.start()
+# scheduler = BackgroundScheduler()
+# scheduler.add_job(fetch_and_store_weather, 'interval', hours=12, kwargs={'capital': 'Singapore'})  # Example with 'Singapore'
+# scheduler.start()
 
 if __name__ == '__main__':
     logger.info("Starting Flask application")
-    fetch_and_store_weather()  # Initial fetch
+    # fetch_and_store_weather()  # Initial fetch
     app.run(debug=True, host='0.0.0.0', port=8000)
