@@ -481,6 +481,55 @@ def fetch_weather():
         logger.exception("Exception occurred")
         return jsonify({"error": "Internal Server Error"}), 500
 
+@app.route('/fetch-only', methods=['GET'])
+@validate_api_key(permission_required='get-weather')
+def fetch_only():
+    try:
+        capital = request.args.get('capital', None)
+        
+        if capital:
+            # Normalize the capital name by stripping extra spaces and replacing multiple spaces with a single space
+            capital = ' '.join(capital.split())
+
+        if not capital:
+            logger.error("No capital provided")
+            return jsonify({"error": "Capital is required"}), 400
+
+        location = capitals_data.get(capital.lower())
+        if not location:
+            logger.error(f"Capital '{capital}' not found")
+            return jsonify({"error": f"Capital '{capital}' not found"}), 404
+
+        lat, lon = location
+        logger.info(f"Capital '{capital}' found with coordinates: {lat}, {lon}")
+
+        weather_data_openweather = fetch_weather_openweather(lat, lon)
+        weather_data_tomorrowio = fetch_weather_tomorrowio(lat, lon)
+        weather_data_visualcrossing = fetch_weather_visualcrossing(lat, lon)
+
+        if not weather_data_openweather or not weather_data_tomorrowio or not weather_data_visualcrossing:
+            logger.error("Failed to fetch weather data from one or more APIs")
+            return jsonify({"error": "Failed to fetch weather data from one or more APIs"}), 500
+
+        weather_data = {
+            "openweather": weather_data_openweather,
+            "tomorrowio": weather_data_tomorrowio,
+            "visualcrossing": weather_data_visualcrossing,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        logger.info(f"Fetched weather data: {weather_data}")
+
+        is_consistent, valid_data = check_weather_data_consistency(weather_data)
+
+        # Calculate averages for consistent fields and round them to 2 decimal places
+        averages = {field: round(sum(values) / len(values), 2) for field, values in valid_data.items()}
+        logger.info(f"Averages computed: {averages}")
+
+        return jsonify({"averages": averages, "valid": is_consistent}), 200
+    except Exception as e:
+        logger.exception("Exception occurred")
+        return jsonify({"error": "Internal Server Error"}), 500
+
 @app.route('/weather', methods=['POST'])
 @validate_api_key(permission_required='get-weather')
 def get_weather():
