@@ -44,6 +44,9 @@ db = client.get_database('ibas-server')
 weatherRecords = db.weather_records
 customerDB = client.get_database('Customers')
 
+# Transit Key Database Setup
+transit_key_db = client.get_database('Transit_Key')
+
 # Load capitals data from CSV
 capitals_data = {}
 with open('capitals.csv', mode='r', encoding='utf-8-sig') as infile:
@@ -385,14 +388,14 @@ def fetch_and_store_weather(capital=None, client_name=None):
     encrypted_transit_key = encrypt_data(transit_key, transit_key)  # Encrypt with itself or another suitable method
     logger.info(f"Generated and encrypted transit key")
 
-    # Store the encrypted transit key in the client-specific collection
-    transit_key_collection = db[f"{client_name}_transitKeys"]
+    # Store the encrypted transit key in the new Transit_Key database
+    transit_key_collection = transit_key_db[f"{client_name}_transitKeys"]
     transit_key_collection.update_one(
         {"client_name": client_name},
         {"$set": {"key": encrypted_transit_key}},
         upsert=True
     )
-    logger.info(f"Stored encrypted transit key for client '{client_name}'")
+    logger.info(f"Stored encrypted transit key for client '{client_name}' in Transit_Key database")
 
     # Encrypt the weather data using the transit key
     encrypted_data = encrypt_data(averages, transit_key)
