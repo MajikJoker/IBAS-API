@@ -505,10 +505,6 @@ def get_historical_data():
 
         client_name = client['client_name']
 
-        # Ensure that 'client' refers to the MongoClient instance
-        if not isinstance(client, MongoClient):
-            client = MongoClient(MONGO_URI)  # Re-initialize client if necessary
-        
         # Retrieve the weather data collection for the client
         user_db = client.get_database('Weather_Record')
         user_collection = user_db[f'{client_name}_Data']
@@ -516,14 +512,14 @@ def get_historical_data():
         # Fetch all records for the client
         records = user_collection.find()
 
-        if not records:
+        if records.count() == 0:
             logger.info(f"No records found for client '{client_name}'")
             return jsonify({"error": "No historical data found"}), 404
 
         historical_data = []
 
         for record in records:
-            # Decrypt the weather data using the associated transit key
+            # Decrypt the transit key using itself or another suitable method
             transit_key_doc = transit_key_db[f"{client_name}_transitKeys"].find_one(
                 {"weather_record_id": record["_id"]}
             )
@@ -532,12 +528,13 @@ def get_historical_data():
                 continue
 
             encrypted_transit_key = transit_key_doc["key"]
-            transit_key = decrypt_data(encrypted_transit_key, encrypted_transit_key)  # Decrypt with itself or another suitable method
+            transit_key = decrypt_data(encrypted_transit_key, encrypted_transit_key)  # Decrypt the transit key
 
+            # Decrypt the weather data using the decrypted transit key
             decrypted_data = decrypt_data(record["data"], transit_key)
 
             # Check the hash of the decrypted data
-            if not check_hash(decrypted_data, record["hash"]):
+            if not check_hash(json.dumps(decrypted_data), record["hash"]):
                 logger.error(f"Data integrity check failed for record ID {record['_id']}")
                 continue
 
