@@ -257,7 +257,11 @@ def setup():
     new_client = {
         "client_name": username,
         "api_key": api_key,
-        "permissions": ["get-weather"],
+        "permissions": [
+				"fetch-only",
+				"fetch-weather",
+				"get-historical-data"
+			],
         "usage_limit": 1000,
         "requests_made": 0,
         "created_at": created_at.isoformat(),
@@ -478,6 +482,78 @@ def fetch_and_store_weather(capital=None, client_name=None):
 
     return is_valid
 
+@app.route('/get-historical-data', methods=['GET'])
+@validate_api_key(permission_required='get-historical-data')
+def get_historical_data():
+    try:
+        api_key = request.args.get('apikey', None)
+        
+        if not api_key:
+            logger.error("API key is required")
+            return jsonify({"error": "API key is required"}), 400
+
+        # Look up the client_name associated with the given API key
+        client_document = db.Customer_API_Keys.find_one({"clients.api_key": api_key})
+        if not client_document:
+            logger.error("Invalid API key provided")
+            return jsonify({"error": "Invalid API key"}), 401
+
+        client = next((client for client in client_document['clients'] if client['api_key'] == api_key), None)
+        if not client:
+            logger.error("Client not found for the provided API key")
+            return jsonify({"error": "Client not found"}), 401
+
+        client_name = client['client_name']
+
+        # Retrieve the weather data collection for the client
+        user_db = client.get_database('Weather_Record')
+        user_collection = user_db[f'{client_name}_Data']
+
+        # Fetch all records for the client
+        records = user_collection.find()
+
+        if not records:
+            logger.info(f"No records found for client '{client_name}'")
+            return jsonify({"error": "No historical data found"}), 404
+
+        historical_data = []
+
+        for record in records:
+            # Decrypt the weather data using the associated transit key
+            transit_key_doc = transit_key_db[f"{client_name}_transitKeys"].find_one(
+                {"weather_record_id": record["_id"]}
+            )
+            if not transit_key_doc:
+                logger.error(f"No transit key found for record ID {record['_id']}")
+                continue
+
+            encrypted_transit_key = transit_key_doc["key"]
+            transit_key = decrypt_data(encrypted_transit_key, encrypted_transit_key)  # Decrypt with itself or another suitable method
+
+            decrypted_data = decrypt_data(record["data"], transit_key)
+
+            # Check the hash of the decrypted data
+            if not check_hash(decrypted_data, record["hash"]):
+                logger.error(f"Data integrity check failed for record ID {record['_id']}")
+                continue
+
+            # Append the decrypted and verified data to the historical data list
+            historical_data.append({
+                "decrypted_data": decrypted_data,
+                "timestamp": record["timestamp"],
+                "record_id": str(record["_id"])
+            })
+
+        if not historical_data:
+            logger.info(f"All records for client '{client_name}' failed integrity checks or no valid data found")
+            return jsonify({"error": "No valid historical data found"}), 500
+
+        return jsonify({"historical_data": historical_data}), 200
+
+    except Exception as e:
+        logger.exception("Exception occurred")
+        return jsonify({"error": "Internal Server Error"}), 500
+
 @app.route('/fetch-weather', methods=['GET'])
 @validate_api_key(permission_required='fetch-weather')
 def fetch_weather():
@@ -519,7 +595,7 @@ def fetch_weather():
         return jsonify({"error": "Internal Server Error"}), 500
 
 @app.route('/fetch-only', methods=['GET'])
-@validate_api_key(permission_required='get-weather')
+@validate_api_key(permission_required='fetch-only')
 def fetch_only():
     try:
         capital = request.args.get('capital', None)
