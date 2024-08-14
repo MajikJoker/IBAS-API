@@ -388,19 +388,21 @@ def fetch_and_store_weather(capital=None, client_name=None):
     averages = {field: round(sum(values) / len(values), 2) for field, values in valid_data.items()}
     logger.info(f"Averages computed: {averages}")
 
-    # Generate the transit key
-    transit_key = generate_key()
-    logger.info(f"Generated transit key")
+    # Serialize the `averages` dictionary to a JSON string with sorted keys
+    averages_json = json.dumps(averages, sort_keys=True)
 
+    # Hash the serialized JSON string
+    data_hash = get_hashed_data(averages_json)
+    
     # Encrypt the weather data using the transit key
-    encrypted_data = encrypt_data(averages, transit_key)
+    transit_key = generate_key()
+    encrypted_data = encrypt_data(averages_json, transit_key)
     logger.info(f"Encrypted weather data: {encrypted_data}")
 
     # Insert the weather record and get the inserted ID
     user_db = client.get_database('Weather_Record')
     user_collection = user_db[f'{client_name}_Data']
 
-    data_hash = get_hashed_data(encrypted_data)
     record = {
         "data": encrypted_data,
         "hash": data_hash,
@@ -532,8 +534,8 @@ def get_historical_data():
             # Use the transit key to decrypt the weather data
             decrypted_data = decrypt_data(record["data"], transit_key)
 
-            # Convert the decrypted data back to a JSON string
-            decrypted_data_str = json.dumps(decrypted_data)
+            # Convert the decrypted data back to a JSON string with sorted keys
+            decrypted_data_str = json.dumps(decrypted_data, sort_keys=True)
 
             # Check the hash of the decrypted data
             if not check_hash(decrypted_data_str, record["hash"]):
