@@ -398,7 +398,7 @@ def fetch_and_store_weather(capital=None, client_name=None):
     logger.info(f"Averages computed: {averages}")
 
     # Serialize the `averages` dictionary to a JSON string with sorted keys
-    averages_json = json.dumps(averages, sort_keys=True)
+    averages_json = json.dumps(averages, sort_keys=True, separators=(',', ':'))
 
     # Hash the serialized JSON string
     data_hash = get_hashed_data(averages_json)
@@ -674,4 +674,3 @@ if __name__ == '__main__':
     logger.info("Starting Flask application")
     fetch_and_store_weather()  # Initial fetch
     app.run(debug=True, host='0.0.0.0', port=8000)
-    
