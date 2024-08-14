@@ -27,14 +27,14 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)  # This will allow all domains to access your Flask app
 
-# # Set secure HTTP headers
-# @app.after_request
-# def set_secure_headers(response):
-#     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-#     response.headers['X-Content-Type-Options'] = 'nosniff'
-#     response.headers['X-Frame-Options'] = 'DENY'
-#     response.headers['Content-Security-Policy'] = "default-src 'self'"
-#     return response
+# Set secure HTTP headers
+@app.after_request
+def set_secure_headers(response):
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Content-Security-Policy'] = "default-src 'self'"
+    return response
 
 # Load environment variables from .env file
 load_dotenv()
