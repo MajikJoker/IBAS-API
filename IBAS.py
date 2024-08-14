@@ -674,3 +674,4 @@ if __name__ == '__main__':
     logger.info("Starting Flask application")
     fetch_and_store_weather()  # Initial fetch
     app.run(debug=True, host='0.0.0.0', port=8000)
+    
