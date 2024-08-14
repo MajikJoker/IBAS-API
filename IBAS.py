@@ -396,9 +396,10 @@ def fetch_and_store_weather(capital=None, client_name=None):
     user_db = client.get_database('Weather_Record')
     user_collection = user_db[f'{client_name}_Data']
 
+    data_hash = get_hashed_data(encrypted_data)
     record = {
         "data": encrypted_data,
-        "hash": get_hashed_data(encrypted_data),
+        "hash": data_hash,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
     logger.info(f"Record to be inserted: {record}")
@@ -458,6 +459,19 @@ def fetch_and_store_weather(capital=None, client_name=None):
 
         is_valid = SimpleSigner.verify_aggregate(identities, encrypted_data.encode(), agg_sig, public_keys)
         logger.info(f"Aggregate signature valid: {is_valid}")
+
+        if is_valid:
+            record["agg_sig"] = agg_sig.hex()
+            try:
+                user_collection.update_one(
+                    {"_id": result_record.inserted_id},
+                    {"$set": {"agg_sig": record["agg_sig"]}}
+                )
+                logger.info(f"Updated record with aggregate signature for record ID: {result_record.inserted_id}")
+            except Exception as e:
+                logger.error(f"Error updating record with aggregate signature: {e}")
+                return False
+
     except (ValueError, TypeError) as e:
         logger.error(f"Error in key processing or verification: {e}")
         is_valid = False
