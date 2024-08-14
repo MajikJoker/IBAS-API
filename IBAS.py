@@ -536,8 +536,8 @@ def get_historical_data():
             decrypted_data_str = json.dumps(decrypted_data)
 
             # Check the hash of the decrypted data
-            if not check_hash(decrypted_data, record["hash"]):
-                logger.error(f"Data integrity check failed for record ID {record['_id']} and data {decrypted_data}")
+            if not check_hash(decrypted_data_str, record["hash"]):
+                logger.error(f"Data integrity check failed for record ID {record['_id']} and data {decrypted_data_str}")
                 continue
 
             # Append the decrypted and verified data to the historical data list
