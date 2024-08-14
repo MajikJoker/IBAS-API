@@ -498,14 +498,14 @@ def get_historical_data():
             logger.error("Invalid API key provided")
             return jsonify({"error": "Invalid API key"}), 401
 
-        client = next((client for client in client_document['clients'] if client['api_key'] == api_key), None)
-        if not client:
+        client_info = next((client for client in client_document['clients'] if client['api_key'] == api_key), None)
+        if not client_info:
             logger.error("Client not found for the provided API key")
             return jsonify({"error": "Client not found"}), 401
 
-        client_name = client['client_name']
+        client_name = client_info['client_name']
 
-        # Retrieve the weather data collection for the client
+        # Ensure that the `client` variable refers to the MongoClient instance
         user_db = client.get_database('Weather_Record')
         user_collection = user_db[f'{client_name}_Data']
 
