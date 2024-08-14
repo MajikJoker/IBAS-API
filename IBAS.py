@@ -529,9 +529,8 @@ def get_historical_data():
 
             encrypted_transit_key = transit_key_doc["key"]
 
-            # Decrypt the transit key using a suitable method (e.g., using a master key)
-            master_key = os.environ.get("MASTER_KEY")  # You need to have a master key or similar to decrypt the transit key
-            transit_key = decrypt_data(encrypted_transit_key, master_key)  # Decrypt the transit key using the master key
+            # Decrypt the transit key using itself (no master key involved)
+            transit_key = decrypt_data(encrypted_transit_key, encrypted_transit_key)
 
             # Decrypt the weather data using the decrypted transit key
             decrypted_data = decrypt_data(record["data"], transit_key)
