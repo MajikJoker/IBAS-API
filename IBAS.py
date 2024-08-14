@@ -519,7 +519,7 @@ def get_historical_data():
         historical_data = []
 
         for record in records:
-            # Decrypt the transit key using itself or another suitable method
+            # Retrieve the encrypted transit key from the database
             transit_key_doc = transit_key_db[f"{client_name}_transitKeys"].find_one(
                 {"weather_record_id": record["_id"]}
             )
@@ -528,7 +528,10 @@ def get_historical_data():
                 continue
 
             encrypted_transit_key = transit_key_doc["key"]
-            transit_key = decrypt_data(encrypted_transit_key, encrypted_transit_key)  # Decrypt the transit key
+
+            # Decrypt the transit key using a suitable method (e.g., using a master key)
+            master_key = os.environ.get("MASTER_KEY")  # You need to have a master key or similar to decrypt the transit key
+            transit_key = decrypt_data(encrypted_transit_key, master_key)  # Decrypt the transit key using the master key
 
             # Decrypt the weather data using the decrypted transit key
             decrypted_data = decrypt_data(record["data"], transit_key)
