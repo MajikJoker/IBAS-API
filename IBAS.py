@@ -399,9 +399,11 @@ def fetch_and_store_weather(capital=None, client_name=None):
 
     # Serialize the `averages` dictionary to a JSON string with sorted keys
     averages_json = json.dumps(averages, sort_keys=True, separators=(',', ':'))
+    logger.info(f"Serialized averages JSON: {averages_json}")
 
     # Hash the serialized JSON string
     data_hash = get_hashed_data(averages_json)
+    logger.info(f"Computed hash for serialized data: {data_hash}")
     
     # Encrypt the weather data using the transit key
     transit_key = generate_key()
@@ -530,6 +532,8 @@ def get_historical_data():
         historical_data = []
 
         for record in records:
+            logger.info(f"Fetched record from MongoDB: {record}")
+
             # Retrieve the transit key from the database
             transit_key_doc = transit_key_db[f"{client_name}_transitKeys"].find_one(
                 {"weather_record_id": record["_id"]}
@@ -539,17 +543,22 @@ def get_historical_data():
                 continue
 
             transit_key = transit_key_doc["key"]
+            logger.info(f"Retrieved transit key: {transit_key}")
 
             # Use the transit key to decrypt the weather data
             decrypted_data = decrypt_data(record["data"], transit_key)
+            logger.info(f"Decrypted weather data: {decrypted_data}")
 
             # Convert the decrypted data back to a JSON string with sorted keys
             decrypted_data_str = json.dumps(decrypted_data, sort_keys=True)
+            logger.info(f"Serialized decrypted data: {decrypted_data_str}")
 
             # Check the hash of the decrypted data
             if not check_hash(decrypted_data_str, record["hash"]):
                 logger.error(f"Data integrity check failed for record ID {record['_id']} and data {decrypted_data_str}")
                 continue
+
+            logger.info(f"Data integrity check passed for record ID {record['_id']}")
 
             # Append the decrypted and verified data to the historical data list
             historical_data.append({
