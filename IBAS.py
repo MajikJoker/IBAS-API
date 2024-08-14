@@ -505,14 +505,14 @@ def get_historical_data():
 
         client_name = client_info['client_name']
 
-        # Ensure that the `client` variable refers to the MongoClient instance
+        # Retrieve the weather data collection for the client
         user_db = client.get_database('Weather_Record')
         user_collection = user_db[f'{client_name}_Data']
 
         # Fetch all records for the client
-        records = user_collection.find()
+        records = list(user_collection.find())
 
-        if records.count() == 0:
+        if not records:
             logger.info(f"No records found for client '{client_name}'")
             return jsonify({"error": "No historical data found"}), 404
 
