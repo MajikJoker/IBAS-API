@@ -549,20 +549,17 @@ def get_historical_data():
             decrypted_data = decrypt_data(record["data"], transit_key)
             logger.info(f"Decrypted weather data: {decrypted_data}")
 
-            # Convert the decrypted data back to a JSON string with sorted keys
-            decrypted_data_str = json.dumps(decrypted_data, sort_keys=True)
-            logger.info(f"Serialized decrypted data: {decrypted_data_str}")
-
+            # **Instead of re-serializing, compare the already serialized JSON string directly**
             # Check the hash of the decrypted data
-            if not check_hash(decrypted_data_str, record["hash"]):
-                logger.error(f"Data integrity check failed for record ID {record['_id']} and data {decrypted_data_str}")
+            if not check_hash(decrypted_data, record["hash"]):
+                logger.error(f"Data integrity check failed for record ID {record['_id']} and data {decrypted_data}")
                 continue
 
             logger.info(f"Data integrity check passed for record ID {record['_id']}")
 
             # Append the decrypted and verified data to the historical data list
             historical_data.append({
-                "decrypted_data": decrypted_data,
+                "decrypted_data": json.loads(decrypted_data),  # Load it back into a dictionary for the response
                 "timestamp": record["timestamp"],
                 "record_id": str(record["_id"])
             })
