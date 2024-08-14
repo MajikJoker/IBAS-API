@@ -387,10 +387,9 @@ def fetch_and_store_weather(capital=None, client_name=None):
     averages = {field: round(sum(values) / len(values), 2) for field, values in valid_data.items()}
     logger.info(f"Averages computed: {averages}")
 
-    # Generate and encrypt the transit key
+    # Generate the transit key
     transit_key = generate_key()
-    encrypted_transit_key = encrypt_data(transit_key, transit_key)  # Encrypt with itself or another suitable method
-    logger.info(f"Generated and encrypted transit key")
+    logger.info(f"Generated transit key")
 
     # Encrypt the weather data using the transit key
     encrypted_data = encrypt_data(averages, transit_key)
@@ -415,15 +414,15 @@ def fetch_and_store_weather(capital=None, client_name=None):
         logger.error(f"Error inserting record into user's collection: {e}")
         return False
 
-    # Store the encrypted transit key linked with the weather record ID
+    # Store the transit key linked with the weather record ID
     transit_key_collection = transit_key_db[f"{client_name}_transitKeys"]
     transit_key_doc = {
         "weather_record_id": result_record.inserted_id,
         "client_name": client_name,
-        "key": encrypted_transit_key
+        "key": transit_key  # Store the transit key directly without encryption
     }
     transit_key_collection.insert_one(transit_key_doc)
-    logger.info(f"Stored encrypted transit key for weather record ID {result_record.inserted_id} in Transit_Key database")
+    logger.info(f"Stored transit key for weather record ID {result_record.inserted_id} in Transit_Key database")
 
     domain_docs = customerDB[client_name].find_one()
     if not domain_docs:
@@ -519,7 +518,7 @@ def get_historical_data():
         historical_data = []
 
         for record in records:
-            # Retrieve the encrypted transit key from the database
+            # Retrieve the transit key from the database
             transit_key_doc = transit_key_db[f"{client_name}_transitKeys"].find_one(
                 {"weather_record_id": record["_id"]}
             )
@@ -527,12 +526,9 @@ def get_historical_data():
                 logger.error(f"No transit key found for record ID {record['_id']}")
                 continue
 
-            encrypted_transit_key = transit_key_doc["key"]
+            transit_key = transit_key_doc["key"]
 
-            # Decrypt the transit key using itself (no master key involved)
-            transit_key = decrypt_data(encrypted_transit_key, encrypted_transit_key)
-
-            # Decrypt the weather data using the decrypted transit key
+            # Use the transit key to decrypt the weather data
             decrypted_data = decrypt_data(record["data"], transit_key)
 
             # Check the hash of the decrypted data
