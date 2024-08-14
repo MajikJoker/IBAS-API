@@ -533,7 +533,7 @@ def get_historical_data():
             decrypted_data = decrypt_data(record["data"], transit_key)
 
             # Check the hash of the decrypted data
-            if not check_hash(json.dumps(decrypted_data), record["hash"]):
+            if not check_hash(decrypted_data, record["hash"]):
                 logger.error(f"Data integrity check failed for record ID {record['_id']}")
                 continue
 
