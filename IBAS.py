@@ -259,7 +259,7 @@ def setup():
         "api_key": api_key,
         "permissions": [
 				"fetch-only",
-				"fetch-weather",
+				"fetch-store-weather",
 				"get-historical-data"
 			],
         "usage_limit": 1000,
@@ -505,6 +505,10 @@ def get_historical_data():
 
         client_name = client['client_name']
 
+        # Ensure that 'client' refers to the MongoClient instance
+        if not isinstance(client, MongoClient):
+            client = MongoClient(MONGO_URI)  # Re-initialize client if necessary
+        
         # Retrieve the weather data collection for the client
         user_db = client.get_database('Weather_Record')
         user_collection = user_db[f'{client_name}_Data']
@@ -554,8 +558,8 @@ def get_historical_data():
         logger.exception("Exception occurred")
         return jsonify({"error": "Internal Server Error"}), 500
 
-@app.route('/fetch-weather', methods=['GET'])
-@validate_api_key(permission_required='fetch-weather')
+@app.route('/fetch-store-weather', methods=['GET'])
+@validate_api_key(permission_required='fetch-store-weather')
 def fetch_weather():
     try:
         capital = request.args.get('capital', None)
