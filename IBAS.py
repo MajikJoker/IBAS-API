@@ -12,7 +12,6 @@ from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
 from Crypto.Signature import pkcs1_15
 from dotenv import load_dotenv
-# from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
 from flask_cors import CORS
 import uuid
@@ -21,20 +20,22 @@ from bson import ObjectId
 from functools import wraps
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 app = Flask(__name__)
 CORS(app)  # This will allow all domains to access your Flask app
 
 # Set secure HTTP headers
-# @app.after_request
-# def set_secure_headers(response):
-#     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-#     response.headers['X-Content-Type-Options'] = 'nosniff'
-#     response.headers['X-Frame-Options'] = 'DENY'
-#     response.headers['Content-Security-Policy'] = "default-src 'self'"
-#     return response
+@app.after_request
+def set_secure_headers(response):
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Content-Security-Policy'] = "default-src 'self'"
+    return response
 
 # Load environment variables from .env file
 load_dotenv()
@@ -665,18 +666,11 @@ def fetch_only():
 
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
-    # scheduler.shutdown()  # Shutdown the scheduler gracefully
     sys.exit(0)
 
 signal.signal(signal.SIGTERM, handle_shutdown_signal)
 signal.signal(signal.SIGINT, handle_shutdown_signal)
 
-# # Scheduler setup
-# scheduler = BackgroundScheduler()
-# scheduler.add_job(fetch_and_store_weather, 'interval', hours=12, kwargs={'capital': 'Singapore'})  # Example with 'Singapore'
-# scheduler.start()
-
 if __name__ == '__main__':
     logger.info("Starting Flask application")
-    fetch_and_store_weather()  # Initial fetch
     app.run(debug=True, host='0.0.0.0', port=8000)
