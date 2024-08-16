@@ -12,7 +12,7 @@ from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
 from Crypto.Signature import pkcs1_15
 from dotenv import load_dotenv
-from apscheduler.schedulers.background import BackgroundScheduler
+# from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
 from flask_cors import CORS
 import uuid
@@ -665,16 +665,16 @@ def fetch_only():
 
 def handle_shutdown_signal(signum, frame):
     logger.info(f"Received shutdown signal ({signum}). Terminating gracefully.")
-    scheduler.shutdown()  # Shutdown the scheduler gracefully
+    # scheduler.shutdown()  # Shutdown the scheduler gracefully
     sys.exit(0)
 
 signal.signal(signal.SIGTERM, handle_shutdown_signal)
 signal.signal(signal.SIGINT, handle_shutdown_signal)
 
-# Scheduler setup
-scheduler = BackgroundScheduler()
-scheduler.add_job(fetch_and_store_weather, 'interval', hours=12, kwargs={'capital': 'Singapore'})  # Example with 'Singapore'
-scheduler.start()
+# # Scheduler setup
+# scheduler = BackgroundScheduler()
+# scheduler.add_job(fetch_and_store_weather, 'interval', hours=12, kwargs={'capital': 'Singapore'})  # Example with 'Singapore'
+# scheduler.start()
 
 if __name__ == '__main__':
     logger.info("Starting Flask application")
