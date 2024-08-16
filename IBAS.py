@@ -624,6 +624,7 @@ def fetch_weather():
 def fetch_only():
     try:
         capital = request.args.get('capital', None)
+        api_key = request.args.get('apikey', None)
         
         if capital:
             # Normalize the capital name by stripping extra spaces and replacing multiple spaces with a single space
@@ -633,6 +634,70 @@ def fetch_only():
             logger.error("No capital provided")
             return jsonify({"error": "Capital is required"}), 400
 
+        # Retrieve the client_name using the API key
+        client_document = db.Customer_API_Keys.find_one({"clients.api_key": api_key})
+        if not client_document:
+            logger.error("Invalid API key provided")
+            return jsonify({"error": "Invalid API key"}), 401
+
+        client = next((client for client in client_document['clients'] if client['api_key'] == api_key), None)
+        if not client:
+            logger.error("Client not found for the provided API key")
+            return jsonify({"error": "Client not found"}), 401
+
+        client_name = client['client_name']
+
+        domain_docs = customerDB[client_name].find_one()
+        if not domain_docs:
+            logger.error(f"No domain documents found for client '{client_name}'")
+            return jsonify({"error": "No domain documents found for this client"}), 404
+
+        domains = domain_docs.get('domain', {}).keys()
+        if not domains:
+            logger.error(f"No domains found in domain documents for client '{client_name}'")
+            return jsonify({"error": "No domains found for this client"}), 404
+
+        # Perform the signature validation before proceeding with the fetch operation
+        identities = []
+        signatures = []
+        public_keys = []
+        is_valid = False
+
+        try:
+            for domain in domains:
+                signer = SimpleSigner(domain)
+                pri_key = domain_docs.get(f'pri_{domain}_PEM')
+                pub_key = domain_docs.get(f'pub_{domain}_PEM')
+
+                if not pri_key or not pub_key:
+                    logger.error(f"Private or public key not found for domain '{domain}'")
+                    return jsonify({"error": f"Keys not found for domain '{domain}'"}), 500
+
+                signer.key = RSA.import_key(pri_key.encode())
+                signer.public_key = RSA.import_key(pub_key.encode())
+
+                # Prepare the data for signing (you can sign any critical data, e.g., the request parameters)
+                data_to_sign = f"{capital}-{client_name}"  # Example of data to sign, adjust as needed
+                signature = signer.sign(data_to_sign.encode())
+                signatures.append(signature)
+                identities.append(domain)
+                public_keys.append(signer.public_key)
+
+            agg_sig = SimpleSigner.aggregate_signatures(signatures)
+            logger.info(f"Aggregate signature created")
+
+            is_valid = SimpleSigner.verify_aggregate(identities, data_to_sign.encode(), agg_sig, public_keys)
+            logger.info(f"Aggregate signature valid: {is_valid}")
+
+            if not is_valid:
+                logger.error("Signature validation failed")
+                return jsonify({"error": "Signature validation failed, cannot proceed with data fetch"}), 403
+
+        except (ValueError, TypeError) as e:
+            logger.error(f"Error in key processing or verification: {e}")
+            return jsonify({"error": "Error in key processing or verification"}), 500
+
+        # Proceed with the fetch operation if the validity check passes
         location = capitals_data.get(capital.lower())
         if not location:
             logger.error(f"Capital '{capital}' not found")
@@ -663,74 +728,7 @@ def fetch_only():
         averages = {field: round(sum(values) / len(values), 2) for field, values in valid_data.items()}
         logger.info(f"Averages computed: {averages}")
 
-        # Serialize the `averages` dictionary to a JSON string with sorted keys
-        averages_json = json.dumps(averages, sort_keys=True, separators=(',', ':'))
-        logger.info(f"Serialized averages JSON: {averages_json}")
-
-        # Hash the serialized JSON string
-        data_hash = get_hashed_data(averages_json)
-        logger.info(f"Computed hash for serialized data: {data_hash}")
-
-        # Perform the signature validation as done in fetch-store-weather
-
-        # Retrieve the client_name using the API key (similar to how it is done in fetch-store-weather)
-        api_key = request.args.get('apikey', None)
-        client_document = db.Customer_API_Keys.find_one({"clients.api_key": api_key})
-        if not client_document:
-            logger.error("Invalid API key provided")
-            return jsonify({"error": "Invalid API key"}), 401
-
-        client = next((client for client in client_document['clients'] if client['api_key'] == api_key), None)
-        if not client:
-            logger.error("Client not found for the provided API key")
-            return jsonify({"error": "Client not found"}), 401
-
-        client_name = client['client_name']
-
-        domain_docs = customerDB[client_name].find_one()
-        if not domain_docs:
-            logger.error(f"No domain documents found for client '{client_name}'")
-            return jsonify({"error": "No domain documents found for this client"}), 404
-
-        domains = domain_docs.get('domain', {}).keys()
-        if not domains:
-            logger.error(f"No domains found in domain documents for client '{client_name}'")
-            return jsonify({"error": "No domains found for this client"}), 404
-
-        identities = []
-        signatures = []
-        public_keys = []
-        is_valid = False
-
-        try:
-            for domain in domains:
-                signer = SimpleSigner(domain)
-                pri_key = domain_docs.get(f'pri_{domain}_PEM')
-                pub_key = domain_docs.get(f'pub_{domain}_PEM')
-
-                if not pri_key or not pub_key:
-                    logger.error(f"Private or public key not found for domain '{domain}'")
-                    return jsonify({"error": f"Keys not found for domain '{domain}'"}), 500
-
-                signer.key = RSA.import_key(pri_key.encode())
-                signer.public_key = RSA.import_key(pub_key.encode())
-
-                signature = signer.sign(averages_json.encode())
-                signatures.append(signature)
-                identities.append(domain)
-                public_keys.append(signer.public_key)
-
-            agg_sig = SimpleSigner.aggregate_signatures(signatures)
-            logger.info(f"Aggregate signature created")
-
-            is_valid = SimpleSigner.verify_aggregate(identities, averages_json.encode(), agg_sig, public_keys)
-            logger.info(f"Aggregate signature valid: {is_valid}")
-
-        except (ValueError, TypeError) as e:
-            logger.error(f"Error in key processing or verification: {e}")
-            is_valid = False
-
-        return jsonify({"averages": averages, "valid": is_valid}), 200 if is_valid else 500
+        return jsonify({"averages": averages, "valid": is_consistent}), 200
 
     except Exception as e:
         logger.exception("Exception occurred")
