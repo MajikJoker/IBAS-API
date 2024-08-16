@@ -500,6 +500,17 @@ def fetch_and_store_weather(capital=None, client_name=None):
 
     return is_valid
 
+def increment_requests_made(api_key):
+    """Increments the 'requests_made' field for the client associated with the API key."""
+    try:
+        db.Customer_API_Keys.update_one(
+            {"clients.api_key": api_key},
+            {"$inc": {"clients.$.requests_made": 1}}
+        )
+        logger.info(f"Incremented requests_made for API key: {api_key}")
+    except Exception as e:
+        logger.error(f"Failed to increment requests_made: {e}")
+
 @app.route('/get-historical-data', methods=['GET'])
 @validate_api_key(permission_required='get-historical-data')
 def get_historical_data():
@@ -509,6 +520,9 @@ def get_historical_data():
         if not api_key:
             logger.error("API key is required")
             return jsonify({"error": "API key is required"}), 400
+
+        # Increment the requests_made counter
+        increment_requests_made(api_key)
 
         # Look up the client_name associated with the given API key
         client_document = db.Customer_API_Keys.find_one({"clients.api_key": api_key})
@@ -594,6 +608,9 @@ def fetch_weather():
             logger.error("API key is required")
             return jsonify({"error": "API key is required"}), 400
 
+        # Increment the requests_made counter
+        increment_requests_made(api_key)
+
         # Look up the client_name associated with the given API key
         client_document = db.Customer_API_Keys.find_one({"clients.api_key": api_key})
         if not client_document:
@@ -633,6 +650,9 @@ def fetch_only():
         if not capital:
             logger.error("No capital provided")
             return jsonify({"error": "Capital is required"}), 400
+
+        # Increment the requests_made counter
+        increment_requests_made(api_key)
 
         # Retrieve the client_name using the API key
         client_document = db.Customer_API_Keys.find_one({"clients.api_key": api_key})
