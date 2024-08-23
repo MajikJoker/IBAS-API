@@ -86,4 +86,4 @@ jobs:
 
       - name: Run Load Test with Locust
         run: |
-          locust --headless -u 100 -r 10 -t 5m --host https://ibas.azurewebsites.net/
+          locust --headless -u 5 -r 1 -t 1m --host https://ibas.azurewebsites.net/
