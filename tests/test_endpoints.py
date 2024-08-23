@@ -15,6 +15,8 @@ class TestEndpoints(unittest.TestCase):
         # Mock the MongoDB collections directly
         self.mock_admin_collection = MagicMock()
         self.mock_customer_collection = MagicMock()
+        self.mock_weather_collection = MagicMock()
+        self.mock_transit_key_collection = MagicMock()
 
         # Patch the database collections in the IBAS module
         self.patcher_db = patch('IBAS.db', autospec=True)
@@ -23,6 +25,11 @@ class TestEndpoints(unittest.TestCase):
         # Set the mock collections to the mock db object
         self.mock_db.Admin_API_Keys = self.mock_admin_collection
         self.mock_db.Customer_API_Keys = self.mock_customer_collection
+        self.mock_db.Weather_Record = MagicMock()  # Mocking the Weather_Record database
+        self.mock_db.Transit_Key = self.mock_transit_key_collection
+
+        # Mock the specific collection for the client within Weather_Record
+        self.mock_db.Weather_Record.testclient_Data = MagicMock()
 
     def tearDown(self):
         """Stop the mock patcher after each test."""
@@ -96,11 +103,8 @@ class TestEndpoints(unittest.TestCase):
 
     def test_fetch_store_weather_invalid_key(self):
         """Test the /fetch-store-weather endpoint with an invalid API key."""
-        # Mocking for permission validation
-        self.mock_customer_collection.find_one.side_effect = [
-            None,  # No document found in Admin_API_Keys
-            None  # No document found in Customer_API_Keys
-        ]
+        # Ensure that no client is returned, simulating an invalid API key
+        self.mock_customer_collection.find_one.return_value = None
         
         response = self.app.get('/fetch-store-weather?capital=paris&apikey=invalid_api_key')
         self.assertEqual(response.status_code, 401)
