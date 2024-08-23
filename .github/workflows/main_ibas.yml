@@ -1,8 +1,4 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-# More info on Python, GitHub Actions, and Azure App Service: https://aka.ms/python-webapps-actions
-
-name: Build and deploy Python app to Azure Web App - IBAS
+name: Build, Test, and Deploy Python app to Azure Web App - IBAS
 
 on:
   push:
@@ -30,7 +26,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
+      - name: Install dev dependencies for testing
+        run: pip install locust pytest
+
+      - name: Run Unit Tests
+        run: python -m unittest discover tests/
 
       - name: Zip artifact for deployment
         run: zip release.zip ./* -r
@@ -68,7 +68,7 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_24060F42CBA04E1F87F7A7C7B7A1AA5B }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C4FDF41AA1F7400D97512E86211B27B4 }}
 
-      - name: "Deploy to Azure Web App"
+      - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         id: deploy-to-webapp
         with:
@@ -81,3 +81,15 @@ jobs:
           echo "WEATHER_API_KEY=${{ secrets.WEATHER_API_KEY }}" >> $GITHUB_ENV
           echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> $GITHUB_ENV
           echo "WEATHER_API_KEY=${{ secrets.WEATHER_API_KEY }}" >> $GITHUB_ENV
+
+  load-test:
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Install Locust
+        run: pip install locust
+
+      - name: Run Load Test with Locust
+        run: |
+          locust --headless -u 100 -r 10 -t 5m --host https://ibas.azurewebsites.net/
