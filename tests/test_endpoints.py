@@ -1,8 +1,6 @@
 import unittest
 from IBAS import app, db
-from unittest.mock import patch
-from pymongo import MongoClient
-import json
+from unittest.mock import patch, MagicMock
 
 class TestEndpoints(unittest.TestCase):
 
@@ -14,18 +12,25 @@ class TestEndpoints(unittest.TestCase):
 
     def setUp(self):
         """Mock the database connection for each test."""
-        self.patcher = patch('IBAS.db', spec=True)  # Use spec=True to prevent autospec issues
-        self.mock_db = self.patcher.start()
+        # Mock the MongoDB collections directly
+        self.mock_admin_collection = MagicMock()
+        self.mock_customer_collection = MagicMock()
+        self.mock_weather_collection = MagicMock()
+        self.mock_transit_key_collection = MagicMock()
 
-        # Mock MongoDB collections
-        self.mock_admin_collection = self.mock_db.Admin_API_Keys
-        self.mock_customer_collection = self.mock_db.Customer_API_Keys
-        self.mock_weather_collection = self.mock_db.Weather_Record
-        self.mock_transit_key_collection = self.mock_db.Transit_Key
+        # Patch the database collections in the IBAS module
+        self.patcher_db = patch('IBAS.db', autospec=True)
+        self.mock_db = self.patcher_db.start()
+
+        # Set the mock collections to the mock db object
+        self.mock_db.Admin_API_Keys = self.mock_admin_collection
+        self.mock_db.Customer_API_Keys = self.mock_customer_collection
+        self.mock_db.Weather_Record = self.mock_weather_collection
+        self.mock_db.Transit_Key = self.mock_transit_key_collection
 
     def tearDown(self):
         """Stop the mock patcher after each test."""
-        self.patcher.stop()
+        self.patcher_db.stop()
 
     def test_setup_endpoint_valid(self):
         """Test the /setup endpoint with valid data."""
