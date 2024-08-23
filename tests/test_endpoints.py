@@ -35,9 +35,15 @@ class TestEndpoints(unittest.TestCase):
     def test_setup_endpoint_valid(self):
         """Test the /setup endpoint with valid data."""
         mock_client_name = 'testuser'
+        
+        # Mock the API key validation to return a client with valid permissions
         self.mock_customer_collection.find_one.return_value = {
             '_id': 'some_id',
-            'clients': []
+            'clients': [{
+                'client_name': mock_client_name,
+                'api_key': 'valid_api_key',
+                'permissions': ['setup']  # Ensure 'setup' permission is present
+            }]
         }
 
         with patch('IBAS.uuid.uuid4', return_value='mock_uuid'):
@@ -102,6 +108,41 @@ class TestEndpoints(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertIn("error", response.json)
         self.assertEqual(response.json["error"], "Invalid API key")
+
+    def test_setup_endpoint_permission_denied(self):
+        """Test the /setup endpoint when the API key does not have the required permission."""
+        mock_client_name = 'testuser'
+        
+        # Mock the API key validation to return a client without the 'setup' permission
+        self.mock_customer_collection.find_one.return_value = {
+            '_id': 'some_id',
+            'clients': [{
+                'client_name': mock_client_name,
+                'api_key': 'valid_api_key',
+                'permissions': ['fetch-only']  # Missing 'setup' permission
+            }]
+        }
+
+        response = self.app.get(f'/setup?apikey=valid_api_key&username={mock_client_name}')
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("error", response.json)
+        self.assertEqual(response.json["error"], "Permission denied")
+
+    def test_fetch_store_weather_key_with_no_permissions(self):
+        """Test the /fetch-store-weather endpoint with a valid API key but without the necessary permission."""
+        self.mock_customer_collection.find_one.return_value = {
+            '_id': 'some_id',
+            'clients': [{
+                'client_name': 'testuser',
+                'api_key': 'valid_api_key',
+                'permissions': ['fetch-only']  # Missing 'fetch-store-weather' permission
+            }]
+        }
+
+        response = self.app.get('/fetch-store-weather?capital=paris&apikey=valid_api_key')
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("error", response.json)
+        self.assertEqual(response.json["error"], "Permission denied")
 
 if __name__ == '__main__':
     unittest.main()
