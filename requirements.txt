@@ -8,4 +8,4 @@ gunicorn==22.0.0
 apscheduler==3.9.1
 flask-cors==3.0.10
 pytest==7.4.0
-locust==2.16.3
+locust==2.25.0
