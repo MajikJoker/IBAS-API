@@ -56,6 +56,9 @@ class TestEndpoints(unittest.TestCase):
         with patch('IBAS.uuid.uuid4', return_value='mock_uuid'):
             response = self.app.get(f'/setup?apikey={mock_api_key}&username={mock_client_name}')
         
+        print(f"DEBUG: Response status code: {response.status_code}")
+        print(f"DEBUG: Response JSON: {response.json}")
+
         self.assertEqual(response.status_code, 200)
         self.assertIn("domains", response.json)
         self.assertIn("keys", response.json)
@@ -78,6 +81,10 @@ class TestEndpoints(unittest.TestCase):
             }
         ]
         response = self.app.get(f'/setup?apikey={mock_api_key}')
+        
+        print(f"DEBUG: Response status code: {response.status_code}")
+        print(f"DEBUG: Response JSON: {response.json}")
+        
         self.assertEqual(response.status_code, 400)
         self.assertIn("error", response.json)
         self.assertEqual(response.json["error"], "Username is required")
@@ -102,6 +109,9 @@ class TestEndpoints(unittest.TestCase):
 
         with patch('IBAS.fetch_and_store_weather', return_value=True):
             response = self.app.get(f'/fetch-store-weather?capital=paris&apikey={mock_api_key}')
+        
+        print(f"DEBUG: Response status code: {response.status_code}")
+        print(f"DEBUG: Response JSON: {response.json}")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("message", response.json)
@@ -115,6 +125,10 @@ class TestEndpoints(unittest.TestCase):
         self.mock_customer_collection.find_one.return_value = None
         
         response = self.app.get(f'/fetch-store-weather?capital=paris&apikey={mock_api_key}')
+        
+        print(f"DEBUG: Response status code: {response.status_code}")
+        print(f"DEBUG: Response JSON: {response.json}")
+        
         self.assertEqual(response.status_code, 401)
         self.assertIn("error", response.json)
         self.assertEqual(response.json["error"], "Invalid API key")
@@ -148,6 +162,9 @@ class TestEndpoints(unittest.TestCase):
                 
                 response = self.app.get(f'/get-historical-data?apikey={mock_api_key}')
         
+        print(f"DEBUG: Response status code: {response.status_code}")
+        print(f"DEBUG: Response JSON: {response.json}")
+        
         self.assertEqual(response.status_code, 200)
         self.assertIn("historical_data", response.json)
         self.assertEqual(len(response.json["historical_data"]), 2)
@@ -163,6 +180,10 @@ class TestEndpoints(unittest.TestCase):
         ]
         
         response = self.app.get(f'/get-historical-data?apikey={mock_api_key}')
+        
+        print(f"DEBUG: Response status code: {response.status_code}")
+        print(f"DEBUG: Response JSON: {response.json}")
+        
         self.assertEqual(response.status_code, 401)
         self.assertIn("error", response.json)
         self.assertEqual(response.json["error"], "Invalid API key")
@@ -186,6 +207,10 @@ class TestEndpoints(unittest.TestCase):
         ]
 
         response = self.app.get(f'/setup?apikey={mock_api_key}&username={mock_client_name}')
+        
+        print(f"DEBUG: Response status code: {response.status_code}")
+        print(f"DEBUG: Response JSON: {response.json}")
+        
         self.assertEqual(response.status_code, 403)
         self.assertIn("error", response.json)
         self.assertEqual(response.json["error"], "Permission denied")
@@ -195,7 +220,6 @@ class TestEndpoints(unittest.TestCase):
         mock_client_name = 'WeatherNodeInitiative'
         mock_api_key = '58c8f6da-98b4-4c4b-bfa7-5b52f09ea139'
         
-        # Mock the API key validation to return a client without the 'fetch-store-weather' permission
         self.mock_customer_collection.find_one.side_effect = [
             None,  # No document found in Admin_API_Keys
             {  # Valid document found in Customer_API_Keys but without the required permission
@@ -209,6 +233,10 @@ class TestEndpoints(unittest.TestCase):
         ]
 
         response = self.app.get(f'/fetch-store-weather?capital=paris&apikey={mock_api_key}')
+        
+        print(f"DEBUG: Response status code: {response.status_code}")
+        print(f"DEBUG: Response JSON: {response.json}")
+        
         self.assertEqual(response.status_code, 403)
         self.assertIn("error", response.json)
         self.assertEqual(response.json["error"], "Permission denied")
