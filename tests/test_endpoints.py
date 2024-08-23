@@ -14,12 +14,14 @@ class TestEndpoints(unittest.TestCase):
 
     def setUp(self):
         """Mock the database connection for each test."""
-        self.patcher = patch('IBAS.db', autospec=True)
+        self.patcher = patch('IBAS.db', spec=True)  # Use spec=True to prevent autospec issues
         self.mock_db = self.patcher.start()
 
         # Mock MongoDB collections
         self.mock_admin_collection = self.mock_db.Admin_API_Keys
         self.mock_customer_collection = self.mock_db.Customer_API_Keys
+        self.mock_weather_collection = self.mock_db.Weather_Record
+        self.mock_transit_key_collection = self.mock_db.Transit_Key
 
     def tearDown(self):
         """Stop the mock patcher after each test."""

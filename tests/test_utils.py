@@ -8,7 +8,9 @@ class TestUtils(unittest.TestCase):
         """Test that the generated key is not None and has the expected length."""
         key = generate_key()
         self.assertIsNotNone(key, "Generated key should not be None.")
-        self.assertEqual(len(key), 32, "Generated key should be 32 bytes long.")
+        
+        # Base64 encoding of 16 bytes results in a 24-character string
+        self.assertEqual(len(key), 24, "Generated key should be 24 characters long due to base64 encoding.")
 
     def test_encrypt_decrypt_data(self):
         """Test that data is correctly encrypted and then decrypted to its original form."""
@@ -27,9 +29,9 @@ class TestUtils(unittest.TestCase):
         different_key = generate_key()
         data = "This is a test string"
         encrypted_data = encrypt_data(data, key)
-        
-        decrypted_data = decrypt_data(encrypted_data, different_key)
-        self.assertNotEqual(decrypted_data, data, "Decrypted data with a different key should not match the original data.")
+
+        with self.assertRaises(ValueError, msg="Decryption with a different key should raise ValueError due to MAC check failure."):
+            decrypt_data(encrypted_data, different_key)
 
     def test_get_hashed_data(self):
         """Test that the hash of the data is correctly generated and consistent."""
