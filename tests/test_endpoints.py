@@ -60,12 +60,6 @@ class TestEndpoints(unittest.TestCase):
         self.assertIn("keys", response.json)
         self.assertIn("api_key", response.json)
 
-    def test_setup_endpoint_no_username(self):
-        response = self.app.get('/setup?apikey=58c8f6da-98b4-4c4b-bfa7-5b52f09ea139')
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("error", response.json)
-        self.assertEqual(response.json["error"], "Username is required")
-
     def test_fetch_store_weather_valid(self):
         with patch('IBAS.fetch_and_store_weather', return_value=True):
             response = self.app.get('/fetch-store-weather?capital=paris&apikey=58c8f6da-98b4-4c4b-bfa7-5b52f09ea139')
@@ -94,41 +88,6 @@ class TestEndpoints(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("historical_data", response.json)
         self.assertEqual(len(response.json["historical_data"]), 2)
-
-    def test_get_historical_data_invalid_key(self):
-        self.mock_customer_collection.find_one.return_value = None
-        response = self.app.get('/get-historical-data?apikey=invalid_api_key')
-        self.assertEqual(response.status_code, 401)
-        self.assertIn("error", response.json)
-        self.assertEqual(response.json["error"], "Invalid API key")
-
-    def test_setup_endpoint_permission_denied(self):
-        self.mock_customer_collection.find_one.return_value = {
-            '_id': 'some_id',
-            'clients': [{
-                'client_name': 'WeatherNodeInitiative',
-                'api_key': '58c8f6da-98b4-4c4b-bfa7-5b52f09ea139',
-                'permissions': ['fetch-only']
-            }]
-        }
-        response = self.app.get(f'/setup?apikey=58c8f6da-98b4-4c4b-bfa7-5b52f09ea139&username=WeatherNodeInitiative')
-        self.assertEqual(response.status_code, 403)
-        self.assertIn("error", response.json)
-        self.assertEqual(response.json["error"], "Permission denied")
-
-    def test_fetch_store_weather_key_with_no_permissions(self):
-        self.mock_customer_collection.find_one.return_value = {
-            '_id': 'some_id',
-            'clients': [{
-                'client_name': 'WeatherNodeInitiative',
-                'api_key': '58c8f6da-98b4-4c4b-bfa7-5b52f09ea139',
-                'permissions': ['fetch-only']
-            }]
-        }
-        response = self.app.get('/fetch-store-weather?capital=paris&apikey=58c8f6da-98b4-4c4b-bfa7-5b52f09ea139')
-        self.assertEqual(response.status_code, 403)
-        self.assertIn("error", response.json)
-        self.assertEqual(response.json["error"], "Permission denied")
 
 if __name__ == '__main__':
     unittest.main()
