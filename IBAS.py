@@ -148,17 +148,21 @@ def validate_api_key(permission_required):
 
             # Check in Admin collection first
             admin_doc = db.Admin_API_Keys.find_one({"admins.api_key": api_key})
+            print(f"DEBUG: Admin API Key Check: {admin_doc}")
             if admin_doc:
                 admin = next((admin for admin in admin_doc['admins'] if admin['api_key'] == api_key), None)
+                print(f"DEBUG: Admin Found: {admin}")
                 if admin and permission_required in admin['permissions']:
                     return f(*args, **kwargs)
                 else:
                     return jsonify({"error": "Permission denied"}), 403
-            
+
             # If not found in Admin, check in Client collection
             client_doc = db.Customer_API_Keys.find_one({"clients.api_key": api_key})
+            print(f"DEBUG: Client API Key Check: {client_doc}")
             if client_doc:
                 client = next((client for client in client_doc['clients'] if client['api_key'] == api_key), None)
+                print(f"DEBUG: Client Found: {client}")
                 if client and permission_required in client['permissions']:
                     return f(*args, **kwargs)
                 else:
