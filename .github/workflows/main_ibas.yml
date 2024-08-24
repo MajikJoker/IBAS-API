@@ -84,6 +84,11 @@ jobs:
       - name: Install Locust
         run: pip install locust
 
+      - name: Print current directory and list files
+        run: |
+          pwd
+          ls -al
+
       - name: Run Load Test with Locust
         run: |
           locust --headless -u 5 -r 1 -t 1m --host https://ibas.azurewebsites.net/ -f locustfile.py
