@@ -6,13 +6,14 @@ class WeatherApiTest(TaskSet):
     def on_start(self):
         """Called when a Locust instance starts running."""
         self.api_key = "58c8f6da-98b4-4c4b-bfa7-5b52f09ea139"
+        self.api_key2 = "123"
         self.base_url = "/"
         self.username = "WeatherNodeInitiative"
     
     @task(1)
     def test_setup_endpoint(self):
         """Test the /setup endpoint."""
-        response = self.client.get(f'{self.base_url}setup?apikey={self.api_key}&username={self.username}')
+        response = self.client.get(f'{self.base_url}setup?apikey={self.api_key2}&username={self.username}')
         if response.status_code != 200:
             print(f"Failed to setup: {response.text}")
     
