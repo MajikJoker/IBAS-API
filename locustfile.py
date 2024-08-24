@@ -6,7 +6,7 @@ class WeatherApiTest(TaskSet):
     def on_start(self):
         """Called when a Locust instance starts running."""
         self.api_key = "58c8f6da-98b4-4c4b-bfa7-5b52f09ea139"
-        self.api_key2 = "123"
+        self.api_key2 = "cc0ec603-2af3-4236-9d09-688feff814cb"
         self.base_url = "/"
         self.username = "WeatherNodeInitiative"
     
